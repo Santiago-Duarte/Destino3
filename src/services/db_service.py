@@ -1,0 +1,62 @@
+from src.config.database import obtener_conexion
+
+def guardar_destino(destino):
+
+    conexion = obtener_conexion()
+    cursor = conexion.cursor()
+
+    try:
+        query = """
+            INSERT INTO destinos (ciudad, pais) 
+            VALUES (%s, %s)
+            RETURNING id;
+        """
+        cursor.execute(query, (destino.ciudad, destino.pais))
+
+        destino_id = cursor.fetchone()[0]
+        conexion.commit()
+        return destino_id
+
+    except Exception as error:
+        conexion.rollback()
+        print(f"error al guardar el destino: {error}")
+        return None
+
+    finally:
+        cursor.close()
+        conexion.close()
+
+
+def guardar_hospedaje(hospedaje):
+
+    conexion = obtener_conexion()
+    cursor = conexion.cursor()
+
+    try:
+        query = """
+            INSERT INTO hospedajes (nombre, tipo, precio_noche, calificacion, direccion, url_reserva, destino_id) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            RETURNING id;
+        """
+        cursor.execute(
+            query,
+            (
+                hospedaje.nombre, hospedaje.tipo,
+                hospedaje.precio_noche, hospedaje.calificacion,
+                hospedaje.direccion, hospedaje.url_reserva,
+                hospedaje.destino_id)
+            )
+
+        hospedaje_id = cursor.fetchone()[0]
+        conexion.commit()
+        return hospedaje_id
+
+    except Exception as error:
+        conexion.rollback()
+        print(f"error al guardar el hospedaje: {error}")
+        return None
+
+    finally:
+        cursor.close()
+        conexion.close()
+
