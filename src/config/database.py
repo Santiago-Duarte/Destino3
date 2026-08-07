@@ -1,8 +1,6 @@
 import os
-from dotenv import load_dotenv
 import psycopg2
 
-load_dotenv()
 
 def obtener_conexion():
     entorno = os.getenv('ENVIRONMENT', 'development')
