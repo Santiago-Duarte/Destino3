@@ -63,6 +63,7 @@ def guardar_hospedaje(hospedaje):
         cursor.close()
         conexion.close()
 
+
 def obtener_destinos():
 
     conexion = obtener_conexion()
@@ -85,6 +86,7 @@ def obtener_destinos():
     finally:
         cursor.close()
         conexion.close()
+
 
 def obtener_hospedajes_por_destino(destino_id):
 
