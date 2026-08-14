@@ -2,12 +2,40 @@ import os
 import json
 from pathlib import Path
 
+from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from google import genai
+from google.genai import types
 from src.models.hospedaje import Hospedaje
 from src.services.api_searcher import construir_link_google_hotels
 
 load_dotenv()
+
+
+class EvaluacionIAOutput(BaseModel):
+    id_temporal: int
+    resumen_ejecutivo: str
+    puntos_fuertes: str
+    puntos_debiles: str
+    score_calidad_precio: int = Field(ge=1, le=10)
+
+
+class Top3Evaluaciones(BaseModel):
+    top_3: list[EvaluacionIAOutput]
+
+
+def seleccionar_candidatos( s: list, presupuesto_max: float) -> list:
+    candidatos_validos = [
+        h for h in hospedajes
+        if h.precio_noche is not None and h.precio_noche <= presupuesto_max
+    ]
+    candidatos_ordenados = sorted(
+        candidatos_validos,
+        key=lambda h: (-(h.calificacion or 0), h.precio_noche)
+    )[:5]
+
+    return candidatos_ordenados
+
 
 class AIEvaluator:
 
@@ -18,23 +46,17 @@ class AIEvaluator:
         self.client = genai.Client(api_key=api_key)
 
     def evaluar_hospedaje(self, hospedajes: list[Hospedaje], presupuesto_max: float, preferencias: str):
-        dentro_del_presupuesto = [
-            hospedaje for hospedaje in hospedajes
-            if hospedaje.precio_noche is not None and hospedaje.precio_noche <= presupuesto_max
-        ]
 
-        if not dentro_del_presupuesto:
+        mejores = seleccionar_candidatos(hospedajes, presupuesto_max)
+
+        if not mejores:
             print("No se encontraron hospedajes dentro del presupuesto.")
             return None
 
-        mejores = sorted(
-            dentro_del_presupuesto,
-            key=lambda h: (-(h.calificacion or 0), h.precio_noche)
-        )[:5]
-
         lista_resumida = []
-        for hospedaje in mejores:
+        for i, hospedaje in enumerate(mejores, start=1):
             lista_resumida.append({
+                "id_temporal": i,
                 "nombre": hospedaje.nombre,
                 "precio_noche": hospedaje.precio_noche,
                 "calificacion": hospedaje.calificacion,
@@ -45,27 +67,32 @@ class AIEvaluator:
         prompt = f"""
                 Eres un asistente experto en viajes. Revisa la siguiente lista de hospedajes en formato JSON:
                 {json.dumps(lista_resumida, ensure_ascii=False, indent=4)}
-                
+
                 Criterios del usuario:
                 - Presupuesto máximo por noche: USD ${presupuesto_max}
                 - Preferencias adicionales: {preferencias if preferencias else "Ninguna especificada"}
-                
+
                 Instrucciones:
-                1. Identifica el MEJOR hospedaje de la lista (todos cumplen con el presupuesto).
-                2. Muestra el nombre del hospedaje seleccionado y su enlace de reserva en formato Markdown, usando únicamente la propiedad 'url_reserva' correspondiente a ese hospedaje en el JSON (ejemplo: [Ver o Reservar en Google Hotels](URL)). Queda estrictamente prohibido inventar o modificar enlaces.
-                3. Explica brevemente por qué es la mejor opción.
-                4. Menciona un aspecto positivo y un caso límite o desventaja si aplica.
+                1. Selecciona las **3 mejores opciones** de hospedaje de la lista que cumplan con el presupuesto.
+                2. Para cada opción, utiliza el `id_temporal` exacto del JSON para mantener la relación.
+                3. Proporciona para cada una: un resumen ejecutivo, puntos fuertes, puntos débiles y un `score_calidad_precio` del 1 al 10.
+                4. Usa únicamente las URLs de reserva provistas en los datos de entrada, sin inventar ni modificar enlaces.
                 """
 
         try:
             response = self.client.models.generate_content(
                 model="gemini-3.6-flash",
-                contents=prompt
+                contents=prompt,
+                config = types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=Top3Evaluaciones,
+                ),
             )
-            return response.text
+            return Top3Evaluaciones.model_validate_json(response.text)
         except Exception as e:
             print(f"Error al evaluar hospedaje: {e}")
             return None
+
 
 if __name__ == "__main__":
 
@@ -105,8 +132,8 @@ if __name__ == "__main__":
     analisis = evaluador.evaluar_hospedaje(
         hospedajes,
         80,
-        "Busco algo bien ubicado, limpio y con buena calificacion y que este cerca de la playa"
+        "Con parqueadero, vista al mar, dos cuartos, para cuatro personas"
     )
 
     print("\n--- Resultado del Análisis de Gemini ---")
-    print(analisis)
+    print(analisis.model_dump_json(indent=4) if analisis else "sin resultados")
