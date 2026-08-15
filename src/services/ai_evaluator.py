@@ -24,9 +24,9 @@ class Top3Evaluaciones(BaseModel):
     top_3: list[EvaluacionIAOutput]
 
 
-def seleccionar_candidatos( s: list, presupuesto_max: float) -> list:
+def seleccionar_candidatos( s: list[Hospedaje], presupuesto_max: float) -> list:
     candidatos_validos = [
-        h for h in hospedajes
+        h for h in s
         if h.precio_noche is not None and h.precio_noche <= presupuesto_max
     ]
     candidatos_ordenados = sorted(
