@@ -125,3 +125,48 @@ def obtener_hospedajes_por_destino(destino_id):
         conexion.close()
 
 
+def obtener_o_crear_destino(destino: Destino):
+
+    conexion = obtener_conexion()
+    cursor = conexion.cursor()
+
+    try:
+
+        ciudad = destino.ciudad
+        pais = destino.pais
+
+        if not ciudad or not pais:
+            raise ValueError("ciudad y pais son obligatorios")
+
+        ciudad = ciudad.strip().lower()
+        pais = pais.strip().lower()
+
+        if not ciudad or not pais:
+            raise ValueError("ciudad y pais no pueden quedar vacios")
+
+        query = (
+            """
+            SELECT id, ciudad, pais 
+            FROM destinos 
+            WHERE LOWER(ciudad) = %s AND LOWER(pais) = %s;
+            """
+        )
+
+        cursor.execute(query, (ciudad, pais))
+
+        resultado = cursor.fetchone()
+
+        if resultado:
+            return resultado[0]
+        else:
+            id_nuevo_destino = guardar_destino(Destino(ciudad=ciudad, pais=pais))
+            return id_nuevo_destino
+
+    except Exception as error:
+        print(f"error al obtener o crear el destino: {error}")
+        return None
+    finally:
+        cursor.close()
+        conexion.close()
+
+
