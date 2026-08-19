@@ -1,13 +1,13 @@
 from src.models.destino import Destino
 from src.models.hospedaje import Hospedaje
-from src.services.db_service import guardar_destino, guardar_hospedaje
+from src.services.db_service import obtener_o_crear_destino, guardar_hospedaje
 
 ciudad="Cartagena"
 pais="Colombia"
 
 destino = Destino(ciudad, pais)
 
-destino_id = guardar_destino(destino)
+destino_id = obtener_o_crear_destino(destino)
 
 nombre = "Hotel 1"
 tipo = "hotel"
