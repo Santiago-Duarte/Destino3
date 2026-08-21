@@ -65,6 +65,11 @@ class TestBuscarHospedajes(unittest.TestCase):
         self.addCleanup(patcher_ruta.stop)
         self.addCleanup(os.unlink, self.archivo_temporal.name)
 
+        patcher_destino = patch("src.services.api_searcher.obtener_o_crear_destino",
+                                return_value=42)
+        patcher_destino.start()
+        self.addCleanup(patcher_destino.stop)
+
     @patch("src.services.api_searcher.buscar_hospedajes_raw")
     def test_usar_link_de_entidad_con_fechas_de_search_parameters(self, raw_mock):
         raw_mock.return_value = respuesta_mock()
@@ -99,6 +104,52 @@ class TestBuscarHospedajes(unittest.TestCase):
         raw_mock.return_value = {"search_parameters": {}}
 
         self.assertEqual(buscar_hospedajes("Medellin", "Colombia"), [])
+
+    @patch("src.services.api_searcher.buscar_hospedajes_raw")
+    def test_todos_los_hospedajes_llevan_el_destino_resuelto(self, raw_mock):
+        raw_mock.return_value = respuesta_mock()
+
+        hospedajes = buscar_hospedajes("Medellin", "Colombia")
+
+        self.assertEqual(len(hospedajes), 2)
+        for hospedaje in hospedajes:
+            self.assertEqual(hospedaje.destino_id, 42)
+
+    @patch("src.services.api_searcher.buscar_hospedajes_raw")
+    def test_destino_se_resuelve_una_sola_vez_con_el_destino_correcto(self, raw_mock):
+        raw_mock.return_value = respuesta_mock()
+
+        buscar_hospedajes("Medellin", "Colombia")
+
+        from src.services import api_searcher
+        api_searcher.obtener_o_crear_destino.assert_called_once()
+        destino = api_searcher.obtener_o_crear_destino.call_args.args[0]
+        self.assertEqual(destino.ciudad, "Medellin")
+        self.assertEqual(destino.pais, "Colombia")
+
+    @patch("src.services.api_searcher.buscar_hospedajes_raw")
+    def test_sin_destino_valido_devuelve_lista_vacia(self, raw_mock):
+        raw_mock.return_value = respuesta_mock()
+        from src.services import api_searcher
+        api_searcher.obtener_o_crear_destino.return_value = None
+
+        hospedajes = buscar_hospedajes("Medellin", "Colombia")
+
+        self.assertEqual(hospedajes, [])
+
+    @patch("src.services.api_searcher.buscar_hospedajes_raw")
+    def test_archivo_guardado_incluye_ciudad_y_pais(self, raw_mock):
+        import json
+
+        raw_mock.return_value = respuesta_mock()
+
+        buscar_hospedajes("Medellin", "Colombia")
+
+        with open(self.archivo_temporal.name, "r", encoding="utf-8") as f:
+            datos = json.load(f)
+
+        self.assertEqual(datos["city"], "Medellin")
+        self.assertEqual(datos["country"], "Colombia")
 
 
 class TestBuscarHospedajesRaw(unittest.TestCase):

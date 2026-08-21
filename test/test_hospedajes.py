@@ -8,6 +8,7 @@ from test.db_test_case import BaseDBTestCase
 from src.models.hospedaje import Hospedaje
 from src.services.db_service import (
     guardar_hospedaje,
+    obtener_destinos,
     obtener_hospedajes_por_destino,
 )
 
@@ -78,6 +79,25 @@ class TestHospedajes(BaseDBTestCase):
 
         self.assertIsNone(hospedaje_id)
         self.assertEqual(obtener_hospedajes_por_destino(destino_id), [])
+
+    def test_guardar_hospedaje_sin_destino_devuelve_none(self):
+        hospedaje = Hospedaje(
+            nombre="Hotel 1",
+            tipo="hotel",
+            precio_noche=100,
+            calificacion=4,
+            direccion="Calle 1",
+            url_reserva="https://www.hotel1.com",
+            destino_id=None,
+        )
+
+        hospedaje_id = guardar_hospedaje(hospedaje)
+
+        self.assertIsNone(hospedaje_id)
+        self.assertEqual(obtener_destinos(), [])
+        with self.conexion.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) FROM hospedajes;")
+            self.assertEqual(cursor.fetchone()[0], 0)
 
 
 if __name__ == '__main__':
