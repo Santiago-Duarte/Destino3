@@ -3,7 +3,8 @@ from urllib.parse import quote
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from pathlib import Path
-
+from src.services.db_service import obtener_o_crear_destino
+from src.models.destino import Destino
 from src.models.hospedaje import Hospedaje
 
 load_dotenv()
@@ -64,7 +65,19 @@ def buscar_hospedajes(ciudad, pais, presupuesto_maximo=None):
     if not resultado or "properties" not in resultado:
         return []
 
+    destino = Destino(ciudad=ciudad, pais=pais)
+
+    id_destino = obtener_o_crear_destino(destino)
+
+    if id_destino is None:
+        print("No se pudo obtener o crear el destino")
+        return []
+
     if resultado:
+
+        resultado['city'] = ciudad
+        resultado['country'] = pais
+
         with open(RUTA_RESPUESTA_PRUEBA, "w", encoding="utf-8") as f:
             json.dump(resultado, f, ensure_ascii=False, indent=4)
         print("Respuesta guardad en respuesta_prueba.json")
@@ -94,7 +107,7 @@ def buscar_hospedajes(ciudad, pais, presupuesto_maximo=None):
             url_reserva = lugar.get("link", "")
 
         hospedaje = Hospedaje(
-            destino_id=None,
+            destino_id=id_destino,
             nombre=lugar.get("name", "Sin nombre"),
             tipo="hotel",
             precio_noche=precio,

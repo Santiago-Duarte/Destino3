@@ -32,6 +32,10 @@ def guardar_destino(destino):
 
 def guardar_hospedaje(hospedaje):
 
+    if hospedaje.destino_id is None:
+        print("error al guardar el hospedaje: destino_id es obligatorio")
+        return None
+
     conexion = obtener_conexion()
     cursor = conexion.cursor()
 
@@ -132,17 +136,11 @@ def obtener_o_crear_destino(destino: Destino):
 
     try:
 
-        ciudad = destino.ciudad
-        pais = destino.pais
+        ciudad = (destino.ciudad or "").strip().lower()
+        pais = (destino.pais or "").strip().lower()
 
         if not ciudad or not pais:
-            raise ValueError("ciudad y pais son obligatorios")
-
-        ciudad = ciudad.strip().lower()
-        pais = pais.strip().lower()
-
-        if not ciudad or not pais:
-            raise ValueError("ciudad y pais no pueden quedar vacios")
+            raise ValueError("ciudad y pais son obligatorios y no pueden quedar vacios")
 
         query = (
             """

@@ -7,6 +7,8 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 from src.models.hospedaje import Hospedaje
+from src.models.destino import Destino
+from src.services.db_service import obtener_o_crear_destino
 from src.services.api_searcher import construir_link_google_hotels
 
 load_dotenv()
@@ -105,35 +107,43 @@ if __name__ == "__main__":
     fecha_inicio = parametros_busqueda.get("check_in_date")
     fecha_fin = parametros_busqueda.get("check_out_date")
 
-    for p in datos.get("properties", []):
-        rate = p.get("rate_per_night", {})
-        property_token = p.get("property_token")
-        if property_token and fecha_inicio and fecha_fin:
-            url_reserva = construir_link_google_hotels(
-                property_token,
-                fecha_inicio,
-                fecha_fin,
-                parametros_busqueda.get("q", "")
+    destino = Destino(ciudad=datos.get("city", ""), pais=datos.get("country", ""))
+    destino_id = obtener_o_crear_destino(destino)
+
+    if destino_id is not None:
+
+        for p in datos.get("properties", []):
+            rate = p.get("rate_per_night", {})
+            property_token = p.get("property_token")
+            if property_token and fecha_inicio and fecha_fin:
+                url_reserva = construir_link_google_hotels(
+                    property_token,
+                    fecha_inicio,
+                    fecha_fin,
+                    parametros_busqueda.get("q", "")
+                )
+            else:
+                url_reserva = p.get("link", "")
+            h = Hospedaje (
+                destino_id=destino_id,
+                nombre=p.get("name", "sin nombre"),
+                tipo="hotel",
+                precio_noche=float(rate.get("extracted_lowest", 0)),
+                calificacion=p.get("overall_rating", 0.0),
+                direccion=p.get("description", "Sin dirección"),
+                url_reserva=url_reserva
             )
-        else:
-            url_reserva = p.get("link", "")
-        h = Hospedaje (
-            destino_id=None,
-            nombre=p.get("name", "sin nombre"),
-            tipo="hotel",
-            precio_noche=float(rate.get("extracted_lowest", 0)),
-            calificacion=p.get("overall_rating", 0.0),
-            direccion=p.get("description", "Sin dirección"),
-            url_reserva=url_reserva
+            hospedajes.append(h)
+
+        evaluador = AIEvaluator()
+        analisis = evaluador.evaluar_hospedaje(
+            hospedajes,
+            80,
+            "Con parqueadero, vista al mar, dos cuartos, para cuatro personas"
         )
-        hospedajes.append(h)
 
-    evaluador = AIEvaluator()
-    analisis = evaluador.evaluar_hospedaje(
-        hospedajes,
-        80,
-        "Con parqueadero, vista al mar, dos cuartos, para cuatro personas"
-    )
+        print("\n--- Resultado del Análisis de Gemini ---")
+        print(analisis.model_dump_json(indent=4) if analisis else "sin resultados")
 
-    print("\n--- Resultado del Análisis de Gemini ---")
-    print(analisis.model_dump_json(indent=4) if analisis else "sin resultados")
+    else:
+        print("No se pudo evaluar hospedaje")
