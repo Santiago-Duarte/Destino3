@@ -11,6 +11,13 @@ from src.services.api_searcher import (
     construir_link_google_hotels,
 )
 
+from test.db_test_case import BaseDBTestCase
+
+from src.services.db_service import (
+    obtener_hospedajes_por_destino,
+    guardar_hospedaje,
+)
+
 
 def respuesta_mock():
     return {
@@ -102,8 +109,15 @@ class TestBuscarHospedajes(unittest.TestCase):
     @patch("src.services.api_searcher.buscar_hospedajes_raw")
     def test_sin_properties_devuelve_lista_vacia(self, raw_mock):
         raw_mock.return_value = {"search_parameters": {}}
+        from src.services import api_searcher
 
-        self.assertEqual(buscar_hospedajes("Medellin", "Colombia"), [])
+        resultado = buscar_hospedajes("Medellin", "Colombia")
+
+        self.assertEqual(resultado, [])
+        # Early return api_searcher.py:65 -> sin "properties" no debe resolver destino
+        api_searcher.obtener_o_crear_destino.assert_not_called()
+        # Tampoco debe escribir archivo ni mapear hospedajes
+        raw_mock.assert_called_once_with("Medellin", "Colombia", None)
 
     @patch("src.services.api_searcher.buscar_hospedajes_raw")
     def test_todos_los_hospedajes_llevan_el_destino_resuelto(self, raw_mock):
@@ -185,6 +199,30 @@ class TestBuscarHospedajesRaw(unittest.TestCase):
         self.assertEqual(llamada_params["max_price"], 80)
         self.assertIn("check_in_date", llamada_params)
         self.assertIn("check_out_date", llamada_params)
+
+
+class TestIntegracionBuscarYGuardar(BaseDBTestCase):
+
+    def setUp(self):
+        super().setUp()  # BaseDBTestCase: DELETE FROM hospedajes; DELETE FROM destinos;
+        self.archivo_temporal = tempfile.NamedTemporaryFile(suffix=".json", delete=False)
+        self.archivo_temporal.close()
+        patcher_ruta = patch("src.services.api_searcher.RUTA_RESPUESTA_PRUEBA",
+                             self.archivo_temporal.name)
+        patcher_ruta.start()
+        self.addCleanup(patcher_ruta.stop)
+        self.addCleanup(os.unlink, self.archivo_temporal.name)
+
+    @patch("src.services.api_searcher.buscar_hospedajes_raw")
+    def test_integracion_buscar_y_guardar_persiste(self, mock_raw):
+        mock_raw.return_value = respuesta_mock()  # 2 hoteles
+        hospedajes = buscar_hospedajes("Medellin", "Colombia")  # genera destino_id real via obtener_o_crear_destino
+        self.assertEqual(len(hospedajes), 2)
+        ids = [guardar_hospedaje(h) for h in hospedajes]
+        self.assertTrue(all(isinstance(i, int) for i in ids))
+        persistidos = obtener_hospedajes_por_destino(hospedajes[0].destino_id)
+        self.assertEqual(len(persistidos), 2)
+        self.assertEqual({p.nombre for p in persistidos}, {"Hotel A", "Hotel B"})
 
 
 if __name__ == '__main__':
