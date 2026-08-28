@@ -10,7 +10,9 @@ from src.services.db_service import (
     guardar_hospedaje,
     obtener_destinos,
     obtener_hospedajes_por_destino,
+    obtener_o_crear_destino
 )
+from src.models.destino import Destino
 
 
 class TestHospedajes(BaseDBTestCase):
@@ -98,6 +100,18 @@ class TestHospedajes(BaseDBTestCase):
         with self.conexion.cursor() as cursor:
             cursor.execute("SELECT COUNT(*) FROM hospedajes;")
             self.assertEqual(cursor.fetchone()[0], 0)
+
+    def test_buscar_hospedajes_cuando_no_estan_bien_escritos(self):
+
+
+        nuevo_destino = Destino(" MEdellin  ", " CoLombia")
+
+        destino_creado = obtener_o_crear_destino(nuevo_destino)
+
+        resultado = obtener_destinos()
+
+        self.assertEqual(resultado[0].ciudad, "medellin")
+        self.assertEqual(resultado[0].pais, "colombia")
 
 
 if __name__ == '__main__':

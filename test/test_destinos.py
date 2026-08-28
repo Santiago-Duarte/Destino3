@@ -2,6 +2,7 @@ import os
 os.environ['ENVIRONMENT'] = 'testing'
 
 import unittest
+from unittest.mock import MagicMock, patch
 
 from test.db_test_case import BaseDBTestCase
 
@@ -85,6 +86,59 @@ class TestDestinos(BaseDBTestCase):
         self.assertIsNone(obtener_o_crear_destino(Destino(ciudad="   ", pais="Colombia")))
 
         self.assertEqual(obtener_destinos(), [])
+
+
+class TestObtenerOCrearDestinoCarrera(unittest.TestCase):
+    """Rama carrera db_service.py:161-169: INSERT ON CONFLICT DO NOTHING sin RETURNING -> segundo SELECT"""
+
+    @patch("src.services.db_service.obtener_conexion")
+    def test_rama_carrera_on_conflict_do_nothing_segundo_select(self, mock_obtener_conexion):
+        # Arrange: conexion y cursor mockeados para simular carrera entre SELECT e INSERT
+        mock_conexion = MagicMock()
+        mock_cursor = MagicMock()
+        mock_obtener_conexion.return_value = mock_conexion
+        mock_conexion.cursor.return_value = mock_cursor
+        # Secuencia fetchone: 1º SELECT inicial -> None (no existe), 2º INSERT ON CONFLICT -> None (otro proceso insertó), 3º SELECT carrera -> (99,)
+        mock_cursor.fetchone.side_effect = [None, None, (99,)]
+
+        destino_entrada = Destino(ciudad="  MEdellin  ", pais="  CoLombia  ")
+
+        # Act: debe entrar al segundo SELECT de db_service.py:161-169
+        resultado = obtener_o_crear_destino(destino_entrada)
+
+        # Assert: retorno correcto por carrera
+        self.assertEqual(resultado, 99)
+
+        # Assert: exactamente 3 executes (SELECT inicial, INSERT ON CONFLICT, SELECT carrera)
+        self.assertEqual(mock_cursor.execute.call_count, 3)
+
+        # 1º execute: SELECT inicial con normalización lower+strip
+        query1, params1 = mock_cursor.execute.call_args_list[0][0]
+        self.assertIn("SELECT id FROM destinos WHERE LOWER(TRIM(ciudad))", query1)
+        self.assertEqual(params1, ("medellin", "colombia"))
+
+        # 2º execute: INSERT ON CONFLICT DO NOTHING RETURNING id con misma normalización
+        query2, params2 = mock_cursor.execute.call_args_list[1][0]
+        self.assertIn("INSERT INTO destinos", query2)
+        self.assertIn("ON CONFLICT DO NOTHING", query2)
+        self.assertIn("RETURNING id", query2)
+        self.assertEqual(params2, ("medellin", "colombia"))
+
+        # 3º execute: segundo SELECT explícito de rama carrera (db_service.py:162-165)
+        query3, params3 = mock_cursor.execute.call_args_list[2][0]
+        self.assertIn("SELECT id FROM destinos WHERE LOWER(TRIM(ciudad))", query3)
+        self.assertEqual(params3, ("medellin", "colombia"))
+
+        # Assert: fetchone llamado 3 veces en orden
+        self.assertEqual(mock_cursor.fetchone.call_count, 3)
+
+        # Assert: commit tras encontrar existente por carrera (linea 168) y sin rollback
+        mock_conexion.commit.assert_called_once()
+        mock_conexion.rollback.assert_not_called()
+
+        # Assert: limpieza finally cierra cursor y conexion
+        mock_cursor.close.assert_called_once()
+        mock_conexion.close.assert_called_once()
 
 
 if __name__ == '__main__':
