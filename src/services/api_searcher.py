@@ -73,6 +73,28 @@ def buscar_hospedajes(ciudad, pais, presupuesto_maximo=None):
         print("No se pudo obtener o crear el destino")
         return []
 
+    escribir_ciudad_pais(resultado, ciudad, pais)
+
+    hospedajes = []
+
+    parametros_busqueda = resultado.get("search_parameters", {})
+    fecha_inicio = parametros_busqueda.get("check_in_date")
+    fecha_fin = parametros_busqueda.get("check_out_date")
+
+    lista_hospedajes = crear_lista_hospedajes(
+        resultado,
+        id_destino,
+        fecha_inicio,
+        fecha_fin,
+        presupuesto_maximo,
+        ciudad,
+        pais,
+        hospedajes
+    )
+
+    return lista_hospedajes
+
+def escribir_ciudad_pais(resultado, ciudad, pais):
     if resultado:
 
         resultado['city'] = ciudad
@@ -82,12 +104,17 @@ def buscar_hospedajes(ciudad, pais, presupuesto_maximo=None):
             json.dump(resultado, f, ensure_ascii=False, indent=4)
         print("Respuesta guardad en respuesta_prueba.json")
 
-    hospedajes = []
 
-    parametros_busqueda = resultado.get("search_parameters", {})
-    fecha_inicio = parametros_busqueda.get("check_in_date")
-    fecha_fin = parametros_busqueda.get("check_out_date")
-
+def crear_lista_hospedajes(
+        resultado,
+        id_destino,
+        fecha_inicio,
+        fecha_fin,
+        presupuesto_maximo,
+        ciudad,
+        pais,
+        hospedajes
+):
     for lugar in resultado["properties"]:
         rate_info = lugar.get("rate_per_night", {})
         precio = rate_info.get("extracted_lowest", 0.0)

@@ -107,33 +107,17 @@ if __name__ == "__main__":
     fecha_inicio = parametros_busqueda.get("check_in_date")
     fecha_fin = parametros_busqueda.get("check_out_date")
 
-    destino = Destino(ciudad=datos.get("city", ""), pais=datos.get("country", ""))
+    ciudad = datos.get("city", "")
+    pais = datos.get("country", "")
+
+    destino = Destino(ciudad, pais)
     destino_id = obtener_o_crear_destino(destino)
 
     if destino_id is not None:
 
-        for p in datos.get("properties", []):
-            rate = p.get("rate_per_night", {})
-            property_token = p.get("property_token")
-            if property_token and fecha_inicio and fecha_fin:
-                url_reserva = construir_link_google_hotels(
-                    property_token,
-                    fecha_inicio,
-                    fecha_fin,
-                    parametros_busqueda.get("q", "")
-                )
-            else:
-                url_reserva = p.get("link", "")
-            h = Hospedaje (
-                destino_id=destino_id,
-                nombre=p.get("name", "sin nombre"),
-                tipo="hotel",
-                precio_noche=float(rate.get("extracted_lowest", 0)),
-                calificacion=p.get("overall_rating", 0.0),
-                direccion=p.get("description", "Sin dirección"),
-                url_reserva=url_reserva
-            )
-            hospedajes.append(h)
+        from src.services.api_searcher import crear_lista_hospedajes
+
+        crear_lista_hospedajes(datos, destino_id, fecha_inicio, fecha_fin, 80, ciudad, pais, hospedajes)
 
         evaluador = AIEvaluator()
         analisis = evaluador.evaluar_hospedaje(
