@@ -135,36 +135,57 @@ def obtener_o_crear_destino(destino: Destino):
     cursor = conexion.cursor()
 
     try:
-
         ciudad = (destino.ciudad or "").strip().lower()
         pais = (destino.pais or "").strip().lower()
 
         if not ciudad or not pais:
             raise ValueError("ciudad y pais son obligatorios y no pueden quedar vacios")
 
-        query = (
-            """
-            SELECT id, ciudad, pais 
-            FROM destinos 
-            WHERE LOWER(ciudad) = %s AND LOWER(pais) = %s;
-            """
+        cursor.execute(
+            "SELECT id FROM destinos WHERE LOWER(TRIM(ciudad)) = %s AND LOWER(TRIM(pais)) = %s;",
+            (ciudad, pais),
         )
-
-        cursor.execute(query, (ciudad, pais))
-
         resultado = cursor.fetchone()
-
         if resultado:
             return resultado[0]
-        else:
-            id_nuevo_destino = guardar_destino(Destino(ciudad=ciudad, pais=pais))
-            return id_nuevo_destino
+
+        cursor.execute(
+            "INSERT INTO destinos (ciudad, pais) VALUES (%s, %s) ON CONFLICT DO NOTHING RETURNING id;",
+            (ciudad, pais),
+        )
+        insertado = cursor.fetchone()
+        if insertado:
+            conexion.commit()
+            return insertado[0]
+
+        # Conflicto por carrera: otro proceso insertó el mismo destino
+        cursor.execute(
+            "SELECT id FROM destinos WHERE LOWER(TRIM(ciudad)) = %s AND LOWER(TRIM(pais)) = %s;",
+            (ciudad, pais),
+        )
+        existente = cursor.fetchone()
+        if existente:
+            conexion.commit()
+            return existente[0]
+
+        conexion.commit()
+        return None
 
     except Exception as error:
+        try:
+            conexion.rollback()
+        except Exception:
+            pass
         print(f"error al obtener o crear el destino: {error}")
         return None
     finally:
-        cursor.close()
-        conexion.close()
+        try:
+            cursor.close()
+        except Exception:
+            pass
+        try:
+            conexion.close()
+        except Exception:
+            pass
 
 
