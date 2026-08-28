@@ -27,10 +27,12 @@ class BaseDBTestCase(unittest.TestCase):
             cursor.execute("DELETE FROM hospedajes; DELETE FROM destinos;")
         self.conexion.commit()
 
-    def crear_destino(self, ciudad="Medellin", pais="Colombia"):
+    @staticmethod
+    def crear_destino(ciudad="Medellin", pais="Colombia"):
         return guardar_destino(Destino(ciudad=ciudad, pais=pais))
 
-    def crear_hospedaje(self, destino_id, **campos):
+    @staticmethod
+    def crear_hospedaje(destino_id, **campos):
         valores = dict(
             nombre="Hotel 1",
             tipo="hotel",
