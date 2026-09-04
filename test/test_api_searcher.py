@@ -204,7 +204,7 @@ class TestBuscarHospedajesRaw(unittest.TestCase):
 class TestIntegracionBuscarYGuardar(BaseDBTestCase):
 
     def setUp(self):
-        super().setUp()  # BaseDBTestCase: DELETE FROM hospedajes; DELETE FROM destinos;
+        super().setUp()  # BaseDBTestCase: TRUNCATE + seed user
         self.archivo_temporal = tempfile.NamedTemporaryFile(suffix=".json", delete=False)
         self.archivo_temporal.close()
         patcher_ruta = patch("src.services.api_searcher.RUTA_RESPUESTA_PRUEBA",
