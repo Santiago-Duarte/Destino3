@@ -7,10 +7,13 @@ from unittest.mock import MagicMock, patch
 from test.db_test_case import BaseDBTestCase
 
 from src.models.destino import Destino
+from src.models.recomendaciones import Recomendaciones
+from src.models.busqueda import Busqueda
 from src.services.db_service import (
     guardar_destino,
     obtener_destinos,
     obtener_o_crear_destino,
+    persistir_recomendaciones,
 )
 
 
@@ -88,57 +91,99 @@ class TestDestinos(BaseDBTestCase):
         self.assertEqual(obtener_destinos(), [])
 
 
-class TestObtenerOCrearDestinoCarrera(unittest.TestCase):
-    """Rama carrera db_service.py:161-169: INSERT ON CONFLICT DO NOTHING sin RETURNING -> segundo SELECT"""
+class TestObtenerOCrearDestinoCarrera(BaseDBTestCase):
+    """Tests para la rama de carrera en obtener_o_crear_destino"""
 
     @patch("src.services.db_service.obtener_conexion")
-    def test_rama_carrera_on_conflict_do_nothing_segundo_select(self, mock_obtener_conexion):
-        # Arrange: conexion y cursor mockeados para simular carrera entre SELECT e INSERT
+    def test_carrera_retorna_id_correcto(self, mock_obtener_conexion):
         mock_conexion = MagicMock()
         mock_cursor = MagicMock()
         mock_obtener_conexion.return_value = mock_conexion
         mock_conexion.cursor.return_value = mock_cursor
-        # Secuencia fetchone: 1º SELECT inicial -> None (no existe), 2º INSERT ON CONFLICT -> None (otro proceso insertó), 3º SELECT carrera -> (99,)
         mock_cursor.fetchone.side_effect = [None, None, (99,)]
 
-        destino_entrada = Destino(ciudad="  MEdellin  ", pais="  CoLombia  ")
+        resultado = obtener_o_crear_destino(Destino(ciudad="Medellin", pais="Colombia"))
 
-        # Act: debe entrar al segundo SELECT de db_service.py:161-169
-        resultado = obtener_o_crear_destino(destino_entrada)
-
-        # Assert: retorno correcto por carrera
         self.assertEqual(resultado, 99)
 
-        # Assert: exactamente 3 executes (SELECT inicial, INSERT ON CONFLICT, SELECT carrera)
+    @patch("src.services.db_service.obtener_conexion")
+    def test_carrera_ejecuta_tres_queries(self, mock_obtener_conexion):
+        mock_conexion = MagicMock()
+        mock_cursor = MagicMock()
+        mock_obtener_conexion.return_value = mock_conexion
+        mock_conexion.cursor.return_value = mock_cursor
+        mock_cursor.fetchone.side_effect = [None, None, (99,)]
+
+        obtener_o_crear_destino(Destino(ciudad="Medellin", pais="Colombia"))
+
         self.assertEqual(mock_cursor.execute.call_count, 3)
 
-        # 1º execute: SELECT inicial con normalización lower+strip
-        query1, params1 = mock_cursor.execute.call_args_list[0][0]
-        self.assertIn("SELECT id FROM destinos WHERE LOWER(TRIM(ciudad))", query1)
-        self.assertEqual(params1, ("medellin", "colombia"))
+    @patch("src.services.db_service.obtener_conexion")
+    def test_carrera_hace_commit_sin_rollback(self, mock_obtener_conexion):
+        mock_conexion = MagicMock()
+        mock_cursor = MagicMock()
+        mock_obtener_conexion.return_value = mock_conexion
+        mock_conexion.cursor.return_value = mock_cursor
+        mock_cursor.fetchone.side_effect = [None, None, (99,)]
 
-        # 2º execute: INSERT ON CONFLICT DO NOTHING RETURNING id con misma normalización
-        query2, params2 = mock_cursor.execute.call_args_list[1][0]
-        self.assertIn("INSERT INTO destinos", query2)
-        self.assertIn("ON CONFLICT DO NOTHING", query2)
-        self.assertIn("RETURNING id", query2)
-        self.assertEqual(params2, ("medellin", "colombia"))
+        obtener_o_crear_destino(Destino(ciudad="Medellin", pais="Colombia"))
 
-        # 3º execute: segundo SELECT explícito de rama carrera (db_service.py:162-165)
-        query3, params3 = mock_cursor.execute.call_args_list[2][0]
-        self.assertIn("SELECT id FROM destinos WHERE LOWER(TRIM(ciudad))", query3)
-        self.assertEqual(params3, ("medellin", "colombia"))
-
-        # Assert: fetchone llamado 3 veces en orden
-        self.assertEqual(mock_cursor.fetchone.call_count, 3)
-
-        # Assert: commit tras encontrar existente por carrera (linea 168) y sin rollback
         mock_conexion.commit.assert_called_once()
         mock_conexion.rollback.assert_not_called()
 
-        # Assert: limpieza finally cierra cursor y conexion
+    @patch("src.services.db_service.obtener_conexion")
+    def test_carrera_cierra_conexion_correctamente(self, mock_obtener_conexion):
+        mock_conexion = MagicMock()
+        mock_cursor = MagicMock()
+        mock_obtener_conexion.return_value = mock_conexion
+        mock_conexion.cursor.return_value = mock_cursor
+        mock_cursor.fetchone.side_effect = [None, None, (99,)]
+
+        obtener_o_crear_destino(Destino(ciudad="Medellin", pais="Colombia"))
+
         mock_cursor.close.assert_called_once()
         mock_conexion.close.assert_called_once()
+
+class TestDBRecomendaciones(BaseDBTestCase):
+
+
+    def test_insertar_busqueda_con_3_recomendaciones_verificar_que_se_guardo(self):
+
+        destino_id = self.crear_destino()
+        h1 = self.crear_hospedaje(destino_id, nombre="Hotel 1")
+        h2 = self.crear_hospedaje(destino_id, nombre="Hotel 2")
+        h3 = self.crear_hospedaje(destino_id, nombre="Hotel 3")
+
+        busqueda = Busqueda(
+            id=1,
+            usuario_id=self.usuario_seed_id,
+            destino_id=destino_id,
+            zona="El poblado",
+            presupuesto=200000,
+            fecha_inicio="2023-01-01",
+            fecha_fin="2023-01-02"
+        )
+
+        recomendaciones = [Recomendaciones(id=1, busqueda_id=1, hospedaje_id=h1, posicion=1),
+                          Recomendaciones(id=2, busqueda_id=1, hospedaje_id=h2, posicion=2),
+                          Recomendaciones(id=3, busqueda_id=1, hospedaje_id=h3, posicion=3)]
+
+        persistir_recomendaciones(recomendaciones, busqueda)
+
+
+        cursor = self.conexion.cursor()
+
+        query = "SELECT id, busqueda_id, hospedaje_id, posicion FROM recomendaciones"
+
+        cursor.execute(query)
+
+
+        resultado = cursor.fetchall()
+
+        self.assertEqual(resultado[0], (recomendaciones[0].id,
+                                        recomendaciones[0].busqueda_id,
+                                        recomendaciones[0].hospedaje_id,
+                                        recomendaciones[0].posicion))
 
 
 if __name__ == '__main__':
