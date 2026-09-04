@@ -1,20 +1,26 @@
+from typing import Optional
 from src.config.database import obtener_conexion
 from src.models.destino import Destino
 from src.models.hospedaje import Hospedaje
+from src.models.busqueda import Busqueda
+from src.models.recomendaciones import Recomendaciones
 
 
-def guardar_destino(destino):
+def guardar_destino(destino: Destino) -> Optional[int]:
+
+    ciudad = (destino.ciudad or "").strip()
+    pais = (destino.pais or "").strip()
+
+    if not ciudad or not pais:
+        print("error al guardar el destino: ciudad y pais son obligatorios")
+        return None
 
     conexion = obtener_conexion()
     cursor = conexion.cursor()
 
     try:
-        query = """
-            INSERT INTO destinos (ciudad, pais) 
-            VALUES (%s, %s)
-            RETURNING id;
-        """
-        cursor.execute(query, (destino.ciudad, destino.pais))
+        query = " INSERT INTO destinos (ciudad, pais)  VALUES (%s, %s) RETURNING id;"
+        cursor.execute(query, (ciudad, pais))
 
         destino_id = cursor.fetchone()[0]
         conexion.commit()
@@ -30,7 +36,7 @@ def guardar_destino(destino):
         conexion.close()
 
 
-def guardar_hospedaje(hospedaje):
+def guardar_hospedaje(hospedaje: Hospedaje) -> Optional[int]:
 
     if hospedaje.destino_id is None:
         print("error al guardar el hospedaje: destino_id es obligatorio")
@@ -68,7 +74,7 @@ def guardar_hospedaje(hospedaje):
         conexion.close()
 
 
-def obtener_destinos():
+def obtener_destinos() -> list[Destino]:
 
     conexion = obtener_conexion()
     cursor = conexion.cursor()
@@ -92,7 +98,7 @@ def obtener_destinos():
         conexion.close()
 
 
-def obtener_hospedajes_por_destino(destino_id):
+def obtener_hospedajes_por_destino(destino_id: int) -> list[Hospedaje]:
 
     conexion = obtener_conexion()
     cursor = conexion.cursor()
@@ -129,24 +135,23 @@ def obtener_hospedajes_por_destino(destino_id):
         conexion.close()
 
 
-def obtener_o_crear_destino(destino: Destino):
+def obtener_o_crear_destino(destino: Destino) -> Optional[int]:
+    ciudad = (destino.ciudad or "").strip()
+    pais = (destino.pais or "").strip()
+
+    if not ciudad or not pais:
+        print("error al obtener o crear el destino: ciudad y pais son obligatorios")
+        return None
 
     conexion = obtener_conexion()
     cursor = conexion.cursor()
 
     try:
-        ciudad = (destino.ciudad or "").strip().lower()
-        pais = (destino.pais or "").strip().lower()
-
-        if not ciudad or not pais:
-            raise ValueError("ciudad y pais son obligatorios y no pueden quedar vacios")
-
-        cursor.execute(
-            "SELECT id FROM destinos WHERE LOWER(TRIM(ciudad)) = %s AND LOWER(TRIM(pais)) = %s;",
-            (ciudad, pais),
-        )
+        query = "SELECT id FROM destinos WHERE LOWER(TRIM(ciudad)) = LOWER(%s) AND LOWER(TRIM(pais)) = LOWER(%s);"
+        cursor.execute(query, (ciudad, pais))
         resultado = cursor.fetchone()
         if resultado:
+            conexion.commit()
             return resultado[0]
 
         cursor.execute(
@@ -158,34 +163,57 @@ def obtener_o_crear_destino(destino: Destino):
             conexion.commit()
             return insertado[0]
 
-        # Conflicto por carrera: otro proceso insertó el mismo destino
-        cursor.execute(
-            "SELECT id FROM destinos WHERE LOWER(TRIM(ciudad)) = %s AND LOWER(TRIM(pais)) = %s;",
-            (ciudad, pais),
-        )
+        cursor.execute(query, (ciudad, pais))
         existente = cursor.fetchone()
         if existente:
             conexion.commit()
             return existente[0]
 
-        conexion.commit()
         return None
 
     except Exception as error:
-        try:
-            conexion.rollback()
-        except Exception:
-            pass
+        conexion.rollback()
         print(f"error al obtener o crear el destino: {error}")
         return None
     finally:
-        try:
-            cursor.close()
-        except Exception:
-            pass
-        try:
-            conexion.close()
-        except Exception:
-            pass
+        cursor.close()
+        conexion.close()
 
+
+def persistir_recomendaciones(recomendaciones: list[Recomendaciones], busqueda: Busqueda):
+
+    conexion = obtener_conexion()
+    cursor = conexion.cursor()
+
+    try:
+
+        query = """INSERT INTO busquedas (usuario_id, destino_id, zona, presupuesto, fecha_inicio, fecha_fin) 
+                   VALUES (%s, %s, %s, %s, %s, %s) RETURNING id;"""
+
+        cursor.execute(
+            query,
+            (busqueda.usuario_id,
+             busqueda.destino_id,
+             busqueda.zona,
+             busqueda.presupuesto,
+             busqueda.fecha_inicio,
+             busqueda.fecha_fin)
+        )
+
+        busqueda_id = cursor.fetchone()[0]
+
+        for recomendacion in recomendaciones:
+
+            query = """INSERT INTO recomendaciones (busqueda_id, hospedaje_id, posicion) VALUES (%s, %s, %s);"""
+
+            cursor.execute(query, (busqueda_id, recomendacion.hospedaje_id, recomendacion.posicion))
+
+        conexion.commit()
+
+    except Exception as error:
+        conexion.rollback()
+        print(f"error al obtener recomendaciones: {error}")
+    finally:
+        cursor.close()
+        conexion.close()
 
