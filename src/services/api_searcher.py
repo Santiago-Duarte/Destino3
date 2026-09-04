@@ -1,13 +1,11 @@
 import os, requests, json
 from urllib.parse import quote
-from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from pathlib import Path
+# env se carga centralizado en src/config/__init__.py (importado transitivamente via db_service)
 from src.services.db_service import obtener_o_crear_destino
 from src.models.destino import Destino
 from src.models.hospedaje import Hospedaje
-
-load_dotenv()
 
 RUTA_RESPUESTA_PRUEBA = Path(__file__).resolve().parents[2] / "respuesta_prueba.json"
 
@@ -20,7 +18,7 @@ def construir_link_google_hotels(property_token, fecha_inicio, fecha_fin, query)
     )
 
 
-def buscar_hospedajes_raw(ciudad, pais, presupuesto_maximo=None):
+def buscar_hospedajes_raw(ciudad: str, pais: str, presupuesto_maximo: float = None) -> dict | None:
 
     api_key = os.getenv("SERPAPI_KEY")
     if api_key is None:
@@ -59,7 +57,7 @@ def buscar_hospedajes_raw(ciudad, pais, presupuesto_maximo=None):
     return resultado
 
 
-def buscar_hospedajes(ciudad, pais, presupuesto_maximo=None):
+def buscar_hospedajes(ciudad: str, pais: str, presupuesto_maximo: float = None) -> list[Hospedaje]:
     resultado = buscar_hospedajes_raw(ciudad, pais, presupuesto_maximo)
 
     if not resultado or "properties" not in resultado:
@@ -94,32 +92,31 @@ def buscar_hospedajes(ciudad, pais, presupuesto_maximo=None):
 
     return lista_hospedajes
 
-def escribir_ciudad_pais(resultado, ciudad, pais):
-    if resultado:
+def escribir_ciudad_pais(resultado: dict, ciudad: str, pais: str) -> None:
+    datos = resultado.copy()
+    datos['city'] = ciudad
+    datos['country'] = pais
 
-        resultado['city'] = ciudad
-        resultado['country'] = pais
-
-        with open(RUTA_RESPUESTA_PRUEBA, "w", encoding="utf-8") as f:
-            json.dump(resultado, f, ensure_ascii=False, indent=4)
-        print("Respuesta guardad en respuesta_prueba.json")
+    with open(RUTA_RESPUESTA_PRUEBA, "w", encoding="utf-8") as f:
+        json.dump(datos, f, ensure_ascii=False, indent=4)
+    print("Respuesta guardad en respuesta_prueba.json")
 
 
 def crear_lista_hospedajes(
-        resultado,
-        id_destino,
-        fecha_inicio,
-        fecha_fin,
-        presupuesto_maximo,
-        ciudad,
-        pais,
-        hospedajes
-):
+        resultado: dict,
+        id_destino: int,
+        fecha_inicio: str,
+        fecha_fin: str,
+        presupuesto_maximo: float,
+        ciudad: str,
+        pais: str,
+        hospedajes: list[Hospedaje]
+) -> list[Hospedaje]:
     for lugar in resultado["properties"]:
         rate_info = lugar.get("rate_per_night", {})
-        precio = rate_info.get("extracted_lowest", 0.0)
+        precio = rate_info.get("extracted_lowest")
 
-        if presupuesto_maximo is not None and precio > presupuesto_maximo:
+        if presupuesto_maximo is not None and (precio is None or precio > presupuesto_maximo):
             continue
 
         property_token = lugar.get("property_token")

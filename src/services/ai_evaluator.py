@@ -3,15 +3,12 @@ import json
 from pathlib import Path
 
 from pydantic import BaseModel, Field
-from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 from src.models.hospedaje import Hospedaje
 from src.models.destino import Destino
 from src.services.db_service import obtener_o_crear_destino
 from src.services.api_searcher import construir_link_google_hotels
-
-load_dotenv()
 
 
 class EvaluacionIAOutput(BaseModel):
