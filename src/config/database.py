@@ -1,5 +1,9 @@
 import os
+import logging
+from contextlib import contextmanager
 import psycopg2
+
+logger = logging.getLogger(__name__)
 
 
 def obtener_conexion():
@@ -22,5 +26,21 @@ def obtener_conexion():
         return conexion
 
     except Exception as e:
-        print(f"Error al conectar a la base de datos: {e}")
+        logger.error(f"Error al conectar a la base de datos: {e}")
         return None
+
+
+@contextmanager
+def conexion_manager():
+    conexion = obtener_conexion()
+    if conexion is None:
+        raise ConnectionError("No se pudo establecer conexión con la base de datos")
+    
+    try:
+        yield conexion
+        conexion.commit()
+    except Exception as e:
+        conexion.rollback()
+        raise e
+    finally:
+        conexion.close()
