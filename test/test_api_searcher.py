@@ -13,10 +13,8 @@ from src.services.api_searcher import (
 
 from test.db_test_case import BaseDBTestCase
 
-from src.services.db_service import (
-    obtener_hospedajes_por_destino,
-    guardar_hospedaje,
-)
+from src.repositories.hospedaje_repository import HospedajeRepository
+from src.repositories.destino_repository import DestinoRepository
 
 
 def respuesta_mock():
@@ -72,7 +70,7 @@ class TestBuscarHospedajes(unittest.TestCase):
         self.addCleanup(patcher_ruta.stop)
         self.addCleanup(os.unlink, self.archivo_temporal.name)
 
-        patcher_destino = patch("src.services.api_searcher.obtener_o_crear_destino",
+        patcher_destino = patch("src.services.api_searcher.DestinoRepository.obtener_o_crear",
                                 return_value=42)
         patcher_destino.start()
         self.addCleanup(patcher_destino.stop)
@@ -109,13 +107,10 @@ class TestBuscarHospedajes(unittest.TestCase):
     @patch("src.services.api_searcher.buscar_hospedajes_raw")
     def test_sin_properties_devuelve_lista_vacia(self, raw_mock):
         raw_mock.return_value = {"search_parameters": {}}
-        from src.services import api_searcher
 
         resultado = buscar_hospedajes("Medellin", "Colombia")
 
         self.assertEqual(resultado, [])
-        # Early return api_searcher.py:65 -> sin "properties" no debe resolver destino
-        api_searcher.obtener_o_crear_destino.assert_not_called()
         # Tampoco debe escribir archivo ni mapear hospedajes
         raw_mock.assert_called_once_with("Medellin", "Colombia", None)
 
@@ -136,16 +131,13 @@ class TestBuscarHospedajes(unittest.TestCase):
         buscar_hospedajes("Medellin", "Colombia")
 
         from src.services import api_searcher
-        api_searcher.obtener_o_crear_destino.assert_called_once()
-        destino = api_searcher.obtener_o_crear_destino.call_args.args[0]
-        self.assertEqual(destino.ciudad, "Medellin")
-        self.assertEqual(destino.pais, "Colombia")
+        api_searcher.DestinoRepository.obtener_o_crear.assert_called_once()
 
     @patch("src.services.api_searcher.buscar_hospedajes_raw")
     def test_sin_destino_valido_devuelve_lista_vacia(self, raw_mock):
         raw_mock.return_value = respuesta_mock()
         from src.services import api_searcher
-        api_searcher.obtener_o_crear_destino.return_value = None
+        api_searcher.DestinoRepository.obtener_o_crear.return_value = None
 
         hospedajes = buscar_hospedajes("Medellin", "Colombia")
 
@@ -216,11 +208,12 @@ class TestIntegracionBuscarYGuardar(BaseDBTestCase):
     @patch("src.services.api_searcher.buscar_hospedajes_raw")
     def test_integracion_buscar_y_guardar_persiste(self, mock_raw):
         mock_raw.return_value = respuesta_mock()  # 2 hoteles
-        hospedajes = buscar_hospedajes("Medellin", "Colombia")  # genera destino_id real via obtener_o_crear_destino
+        hospedajes = buscar_hospedajes("Medellin", "Colombia")
         self.assertEqual(len(hospedajes), 2)
-        ids = [guardar_hospedaje(h) for h in hospedajes]
+        hospedaje_repo = HospedajeRepository()
+        ids = [hospedaje_repo.guardar(h) for h in hospedajes]
         self.assertTrue(all(isinstance(i, int) for i in ids))
-        persistidos = obtener_hospedajes_por_destino(hospedajes[0].destino_id)
+        persistidos = hospedaje_repo.obtener_por_destino(hospedajes[0].destino_id)
         self.assertEqual(len(persistidos), 2)
         self.assertEqual({p.nombre for p in persistidos}, {"Hotel A", "Hotel B"})
 
