@@ -2,8 +2,8 @@ import os, requests, json
 from urllib.parse import quote
 from datetime import datetime, timedelta
 from pathlib import Path
-# env se carga centralizado en src/config/__init__.py (importado transitivamente via db_service)
-from src.services.db_service import obtener_o_crear_destino
+# env se carga centralizado en src/config/__init__.py (importado transitivamente via repositories)
+from src.repositories.destino_repository import DestinoRepository
 from src.models.destino import Destino
 from src.models.hospedaje import Hospedaje
 
@@ -65,7 +65,8 @@ def buscar_hospedajes(ciudad: str, pais: str, presupuesto_maximo: float = None) 
 
     destino = Destino(ciudad=ciudad, pais=pais)
 
-    id_destino = obtener_o_crear_destino(destino)
+    destino_repo = DestinoRepository()
+    id_destino = destino_repo.obtener_o_crear(destino)
 
     if id_destino is None:
         print("No se pudo obtener o crear el destino")

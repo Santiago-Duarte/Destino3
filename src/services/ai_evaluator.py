@@ -7,7 +7,7 @@ from google import genai
 from google.genai import types
 from src.models.hospedaje import Hospedaje
 from src.models.destino import Destino
-from src.services.db_service import obtener_o_crear_destino
+from src.repositories.destino_repository import DestinoRepository
 from src.services.api_searcher import construir_link_google_hotels
 
 
@@ -108,7 +108,8 @@ if __name__ == "__main__":
     pais = datos.get("country", "")
 
     destino = Destino(ciudad, pais)
-    destino_id = obtener_o_crear_destino(destino)
+    destino_repo = DestinoRepository()
+    destino_id = destino_repo.obtener_o_crear(destino)
 
     if destino_id is not None:
 
