@@ -5,9 +5,10 @@ import unittest
 from src.config.database import obtener_conexion
 from src.models.destino import Destino
 from src.models.hospedaje import Hospedaje
-from src.services.db_service import guardar_destino, guardar_hospedaje
+from src.repositories.destino_repository import DestinoRepository
+from src.repositories.hospedaje_repository import HospedajeRepository
 
-_TABLAS = "busquedas, recomendaciones, hospedajes, destinos, usuarios"
+_tablas = "busquedas, recomendaciones, hospedajes, destinos, usuarios"
 
 
 class BaseDBTestCase(unittest.TestCase):
@@ -19,6 +20,8 @@ class BaseDBTestCase(unittest.TestCase):
             raise unittest.SkipTest("No se pudo conectar a la base de datos de testing")
         cls.cursor = cls.conexion.cursor()
         cls._insertar_seed_user()
+        cls.destino_repo = DestinoRepository()
+        cls.hospedaje_repo = HospedajeRepository()
 
     @classmethod
     def tearDownClass(cls):
@@ -36,7 +39,7 @@ class BaseDBTestCase(unittest.TestCase):
     @classmethod
     def _clean_db(cls):
         with cls.conexion.cursor() as cursor:
-            cursor.execute(f"TRUNCATE {_TABLAS} RESTART IDENTITY CASCADE")
+            cursor.execute(f"TRUNCATE {_tablas} RESTART IDENTITY CASCADE")
         cls.conexion.commit()
 
     @classmethod
@@ -50,12 +53,10 @@ class BaseDBTestCase(unittest.TestCase):
         cls.usuario_seed_id = cls.cursor.fetchone()[0]
         cls.conexion.commit()
 
-    @staticmethod
-    def crear_destino(ciudad="Medellin", pais="Colombia"):
-        return guardar_destino(Destino(ciudad=ciudad, pais=pais))
+    def crear_destino(self, ciudad="Medellin", pais="Colombia"):
+        return self.destino_repo.guardar(Destino(ciudad=ciudad, pais=pais))
 
-    @staticmethod
-    def crear_hospedaje(destino_id, **campos):
+    def crear_hospedaje(self, destino_id, **campos):
         valores = dict(
             nombre="Hotel 1",
             tipo="hotel",
@@ -66,4 +67,4 @@ class BaseDBTestCase(unittest.TestCase):
             destino_id=destino_id,
         )
         valores.update(campos)
-        return guardar_hospedaje(Hospedaje(**valores))
+        return self.hospedaje_repo.guardar(Hospedaje(**valores))
