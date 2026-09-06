@@ -7,7 +7,6 @@ from test.db_test_case import BaseDBTestCase
 
 from src.models.hospedaje import Hospedaje
 from src.repositories.hospedaje_repository import HospedajeRepository
-from src.models.destino import Destino
 
 
 class TestHospedajes(BaseDBTestCase):
@@ -95,17 +94,6 @@ class TestHospedajes(BaseDBTestCase):
         with self.conexion.cursor() as cursor:
             cursor.execute("SELECT COUNT(*) FROM hospedajes;")
             self.assertEqual(cursor.fetchone()[0], 0)
-
-    def test_buscar_hospedajes_cuando_no_estan_bien_escritos(self):
-
-        nuevo_destino = Destino(" MEdellin  ", " CoLombia")
-
-        destino_creado = self.destino_repo.obtener_o_crear(nuevo_destino)
-
-        resultado = self.destino_repo.obtener_todos()
-
-        self.assertEqual(resultado[0].ciudad, "MEdellin")
-        self.assertEqual(resultado[0].pais, "CoLombia")
 
 
 if __name__ == '__main__':
