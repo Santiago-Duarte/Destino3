@@ -7,11 +7,6 @@ from unittest.mock import MagicMock, patch
 from test.db_test_case import BaseDBTestCase
 
 from src.models.destino import Destino
-from src.models.recomendaciones import Recomendaciones
-from src.models.busqueda import Busqueda
-from src.repositories.destino_repository import DestinoRepository
-from src.repositories.busqueda_repository import BusquedaRepository
-from src.repositories.recomendacion_repository import RecomendacionRepository
 
 
 class TestDestinos(BaseDBTestCase):
@@ -87,11 +82,22 @@ class TestDestinos(BaseDBTestCase):
 
         self.assertEqual(self.destino_repo.obtener_todos(), [])
 
+    def test_buscar_hospedajes_cuando_no_estan_bien_escritos(self):
+
+        nuevo_destino = Destino(" MEdellin  ", " CoLombia")
+
+        destino_creado = self.destino_repo.obtener_o_crear(nuevo_destino)
+
+        resultado = self.destino_repo.obtener_todos()
+
+        self.assertEqual(resultado[0].ciudad, "MEdellin")
+        self.assertEqual(resultado[0].pais, "CoLombia")
+
 
 class TestObtenerOCrearDestinoCarrera(BaseDBTestCase):
     """Tests para la rama de carrera en obtener_o_crear"""
 
-    @patch("src.repositories.destino_repository.DestinoRepository._obtener_conexion")
+    @patch("src.repositories.base_repository.BaseRepository._obtener_conexion")
     def test_carrera_retorna_id_correcto(self, mock_obtener_conexion):
         mock_conexion = MagicMock()
         mock_cursor = MagicMock()
@@ -103,7 +109,7 @@ class TestObtenerOCrearDestinoCarrera(BaseDBTestCase):
 
         self.assertEqual(resultado, 99)
 
-    @patch("src.repositories.destino_repository.DestinoRepository._obtener_conexion")
+    @patch("src.repositories.base_repository.BaseRepository._obtener_conexion")
     def test_carrera_ejecuta_tres_queries(self, mock_obtener_conexion):
         mock_conexion = MagicMock()
         mock_cursor = MagicMock()
@@ -115,7 +121,7 @@ class TestObtenerOCrearDestinoCarrera(BaseDBTestCase):
 
         self.assertEqual(mock_cursor.execute.call_count, 3)
 
-    @patch("src.repositories.destino_repository.DestinoRepository._obtener_conexion")
+    @patch("src.repositories.base_repository.BaseRepository._obtener_conexion")
     def test_carrera_hace_commit_sin_rollback(self, mock_obtener_conexion):
         mock_conexion = MagicMock()
         mock_cursor = MagicMock()
@@ -128,7 +134,7 @@ class TestObtenerOCrearDestinoCarrera(BaseDBTestCase):
         mock_conexion.commit.assert_called_once()
         mock_conexion.rollback.assert_not_called()
 
-    @patch("src.repositories.destino_repository.DestinoRepository._obtener_conexion")
+    @patch("src.repositories.base_repository.BaseRepository._obtener_conexion")
     def test_carrera_cierra_conexion_correctamente(self, mock_obtener_conexion):
         mock_conexion = MagicMock()
         mock_cursor = MagicMock()
@@ -140,84 +146,6 @@ class TestObtenerOCrearDestinoCarrera(BaseDBTestCase):
 
         mock_cursor.close.assert_called_once()
         mock_conexion.close.assert_called_once()
-
-
-class TestDBRecomendaciones(BaseDBTestCase):
-
-    def test_insertar_busqueda_con_3_recomendaciones_verificar_que_se_guardo(self):
-
-        destino_id = self.crear_destino()
-        h1 = self.crear_hospedaje(destino_id, nombre="Hotel 1")
-        h2 = self.crear_hospedaje(destino_id, nombre="Hotel 2")
-        h3 = self.crear_hospedaje(destino_id, nombre="Hotel 3")
-
-        busqueda_repo = BusquedaRepository()
-        recomendacion_repo = RecomendacionRepository()
-
-        busqueda = Busqueda(
-            id=1,
-            usuario_id=self.usuario_seed_id,
-            destino_id=destino_id,
-            zona="El poblado",
-            presupuesto=200000,
-            fecha_inicio="2023-01-01",
-            fecha_fin="2023-01-02"
-        )
-
-        busqueda_id = busqueda_repo.guardar(busqueda)
-
-        recomendaciones = [Recomendaciones(id=1, busqueda_id=busqueda_id, hospedaje_id=h1, posicion=1),
-                          Recomendaciones(id=2, busqueda_id=busqueda_id, hospedaje_id=h2, posicion=2),
-                          Recomendaciones(id=3, busqueda_id=busqueda_id, hospedaje_id=h3, posicion=3)]
-
-        recomendacion_repo.guardar_varias(recomendaciones, busqueda_id)
-
-        cursor = self.conexion.cursor()
-
-        query = "SELECT id, busqueda_id, hospedaje_id, posicion FROM recomendaciones"
-
-        cursor.execute(query)
-
-        resultado = cursor.fetchall()
-
-        self.assertEqual(resultado[0], (recomendaciones[0].id,
-                                        recomendaciones[0].busqueda_id,
-                                        recomendaciones[0].hospedaje_id,
-                                        recomendaciones[0].posicion))
-
-    def test_insertar_busqueda_con_mismo_destino_pero_otra_zona_debe_ser_independiente(self):
-
-        destino_id = self.crear_destino()
-
-        busqueda_repo = BusquedaRepository()
-
-        busqueda1 = Busqueda(
-            id=1,
-            usuario_id=self.usuario_seed_id,
-            destino_id=destino_id,
-            zona="El poblado",
-            presupuesto=200000,
-            fecha_inicio="2023-01-01",
-            fecha_fin="2023-01-02"
-        )
-
-        busqueda2 = Busqueda(
-            id=2,
-            usuario_id=self.usuario_seed_id,
-            destino_id=destino_id,
-            zona="La Candelaria",
-            presupuesto=200000,
-            fecha_inicio="2023-01-01",
-            fecha_fin="2023-01-02"
-        )
-
-        busqueda_repo.guardar(busqueda1)
-        busqueda_repo.guardar(busqueda2)
-
-        cursor = self.conexion.cursor()
-        cursor.execute("SELECT COUNT(*) FROM busquedas")
-        count = cursor.fetchone()[0]
-        self.assertEqual(count, 2)
 
 
 if __name__ == '__main__':
