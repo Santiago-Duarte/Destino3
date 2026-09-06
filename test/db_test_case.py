@@ -7,8 +7,12 @@ from src.models.destino import Destino
 from src.models.hospedaje import Hospedaje
 from src.repositories.destino_repository import DestinoRepository
 from src.repositories.hospedaje_repository import HospedajeRepository
+from src.repositories.busqueda_repository import BusquedaRepository
+from src.repositories.recomendacion_repository import RecomendacionRepository
+from src.models.busqueda import Busqueda
+from src.models.recomendaciones import Recomendaciones
 
-_tablas = "busquedas, recomendaciones, hospedajes, destinos, usuarios"
+_tablas = "busquedas, recomendaciones, evaluaciones_ia, hospedajes, destinos, usuarios"
 
 
 class BaseDBTestCase(unittest.TestCase):
@@ -68,3 +72,34 @@ class BaseDBTestCase(unittest.TestCase):
         )
         valores.update(campos)
         return self.hospedaje_repo.guardar(Hospedaje(**valores))
+
+    def crear_busqueda_con_recomendaciones(self, destino_id, num_hospedajes=3):
+        """Crea una búsqueda con recomendaciones para los hospedajes creados."""
+        hospedajes = []
+        for i in range(1, num_hospedajes + 1):
+            h = self.crear_hospedaje(destino_id, nombre=f"Hotel {i}")
+            hospedajes.append(h)
+
+        busqueda_repo = BusquedaRepository()
+        recomendacion_repo = RecomendacionRepository()
+
+        busqueda = Busqueda(
+            id=1,
+            usuario_id=self.usuario_seed_id,
+            destino_id=destino_id,
+            zona="El poblado",
+            presupuesto=200000,
+            fecha_inicio="2023-01-01",
+            fecha_fin="2023-01-02"
+        )
+
+        busqueda_id = busqueda_repo.guardar(busqueda)
+
+        recomendaciones = [
+            Recomendaciones(id=i, busqueda_id=busqueda_id, hospedaje_id=h, posicion=i)
+            for i, h in enumerate(hospedajes, start=1)
+        ]
+
+        recomendacion_repo.guardar_varias(recomendaciones, busqueda_id)
+
+        return busqueda_id, recomendaciones
