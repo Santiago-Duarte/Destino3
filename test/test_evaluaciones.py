@@ -2,7 +2,7 @@ import unittest
 from psycopg2 import errors
 from test.db_test_case import BaseDBTestCase
 from src.repositories.evaluaciones_repository import EvaluacionesRepository
-from src.services.ai_evaluator import EvaluacionIAOutput
+from src.models.evaluacion import Evaluacion
 
 
 class TestEvaluacionesRepository(BaseDBTestCase):
@@ -15,15 +15,15 @@ class TestEvaluacionesRepository(BaseDBTestCase):
         destino_id = self.crear_destino()
         hospedaje_id = self.crear_hospedaje(destino_id)
 
-        evaluacion = EvaluacionIAOutput(
-            id_temporal=1,
+        evaluacion = Evaluacion(
             resumen_ejecutivo="Excelente opción cerca al centro",
             puntos_fuertes="Ubicación céntrica, desayuno incluido",
             puntos_debiles="Ruido nocturno",
             score_calidad_precio=8,
+            hospedaje_id=hospedaje_id,
         )
 
-        evaluacion_id = self.repo.guardar(evaluacion, hospedaje_id)
+        evaluacion_id = self.repo.guardar(evaluacion)
         self.assertIsNotNone(evaluacion_id)
 
         recuperada = self.repo.obtener_por_hospedaje(hospedaje_id)
@@ -37,26 +37,26 @@ class TestEvaluacionesRepository(BaseDBTestCase):
         destino_id = self.crear_destino()
         hospedaje_id = self.crear_hospedaje(destino_id)
 
-        evaluacion = EvaluacionIAOutput(
-            id_temporal=1,
+        evaluacion = Evaluacion(
             resumen_ejecutivo="Primera evaluación",
             puntos_fuertes="Puntos fuertes",
             puntos_debiles="Puntos débiles",
             score_calidad_precio=7,
+            hospedaje_id=hospedaje_id,
         )
 
-        self.repo.guardar(evaluacion, hospedaje_id)
+        self.repo.guardar(evaluacion)
 
-        evaluacion_duplicada = EvaluacionIAOutput(
-            id_temporal=2,
+        evaluacion_duplicada = Evaluacion(
             resumen_ejecutivo="Segunda evaluación",
             puntos_fuertes="Otros puntos fuertes",
             puntos_debiles="Otros puntos débiles",
             score_calidad_precio=9,
+            hospedaje_id=hospedaje_id,
         )
 
         with self.assertRaises(errors.UniqueViolation):
-            self.repo.guardar(evaluacion_duplicada, hospedaje_id)
+            self.repo.guardar(evaluacion_duplicada)
 
 
 if __name__ == "__main__":
