@@ -8,48 +8,61 @@ Completar la integración de la Fase 3.4 sin avanzar todavía hacia CLI, API o f
 
 ## Orden de trabajo
 
-### 1. Separar modelos de evaluación
+### 1. Separar modelos de evaluación ✅
 
 Crear un modelo propio de evaluación que no dependa directamente del DTO utilizado para representar la respuesta de Gemini.
 
 ---
 
-### 2. Resolver la dependencia Repository → Service
+### 2. Resolver la dependencia Repository → Service ✅
 
 Eliminar la dependencia de `evaluaciones_repository.py` respecto de `ai_evaluator.py`.
 
 ---
 
-### 3. Resolver la decisión de evaluación contextual
+### 3. Resolver la decisión de evaluación contextual ✅
 
 Determinar si una evaluación pertenece:
 
-- únicamente a un hospedaje;
+- únicamente a un hospedaje;    
 - o a un hospedaje dentro del contexto de una búsqueda.
 
-Esta decisión debe resolverse antes de cerrar Fase 3.4.
+**Decisión:** Evaluación pertenece solo al hospedaje (ADR-005).
 
 ---
 
-### 4. Completar repositories
+### 4. Completar repositories ✅
 
 Completar los métodos que sean necesarios para el flujo actual.
 
 Crear los repositories faltantes cuando corresponda al roadmap.
 
+**Métodos agregados:**
+- `BusquedaRepository.obtener_por_id()`
+- `HospedajeRepository.obtener_por_id()`
+- `RecomendacionRepository.obtener_por_busqueda()`
+
 ---
 
-### 5. Implementar mapeo `id_temporal → hospedaje_id`
+### 5. Implementar mapeo `id_temporal → hospedaje_id` ✅
 
 Resolver el ID real de PostgreSQL antes de persistir evaluaciones y recomendaciones.
 
 `id_temporal` nunca debe llegar a la base de datos.
 
+**Implementación:**
+- `evaluar_hospedaje()` retorna `tuple[Top3Evaluaciones, dict[int, Hospedaje]]`
+- El diccionario `mapping` resuelve `id_temporal → Hospedaje` real
+
 ---
 
-### 6. Crear orquestación
+### 6. Crear orquestación ✅
 
 Implementar el flujo completo de la búsqueda mediante una capa de orquestación.
+
+**Implementación:**
+- Creado `src/orchestrator/evaluacion_orchestrator.py`
+- Método `ejecutar()`: evaluación → mapeo → persistencia → recomendaciones
 
 ---
 
