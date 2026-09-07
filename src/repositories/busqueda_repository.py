@@ -36,3 +36,35 @@ class BusquedaRepository(BaseRepository):
         finally:
             cursor.close()
             conexion.close()
+
+    def obtener_por_id(self, busqueda_id: int) -> Optional[Busqueda]:
+        conexion = self._obtener_conexion()
+        cursor = conexion.cursor()
+
+        try:
+            query = """
+                SELECT id, usuario_id, destino_id, zona, presupuesto, fecha_inicio, fecha_fin
+                FROM busquedas
+                WHERE id = %s;
+            """
+            cursor.execute(query, (busqueda_id,))
+            fila = cursor.fetchone()
+
+            if fila is None:
+                return None
+
+            return Busqueda(
+                id=fila[0],
+                usuario_id=fila[1],
+                destino_id=fila[2],
+                zona=fila[3],
+                presupuesto=fila[4],
+                fecha_inicio=fila[5],
+                fecha_fin=fila[6],
+            )
+        except Exception as error:
+            logger.error(f"Error al obtener la búsqueda: {error}")
+            return None
+        finally:
+            cursor.close()
+            conexion.close()

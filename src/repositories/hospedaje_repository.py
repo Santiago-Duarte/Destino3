@@ -42,6 +42,39 @@ class HospedajeRepository(BaseRepository):
             cursor.close()
             conexion.close()
 
+    def obtener_por_id(self, hospedaje_id: int) -> Optional[Hospedaje]:
+        conexion = self._obtener_conexion()
+        cursor = conexion.cursor()
+
+        try:
+            query = """
+                SELECT id, nombre, tipo, precio_noche, calificacion,
+                direccion, url_reserva, destino_id FROM hospedajes
+                WHERE id = %s;
+            """
+            cursor.execute(query, (hospedaje_id,))
+            fila = cursor.fetchone()
+
+            if fila is None:
+                return None
+
+            return Hospedaje(
+                id=fila[0],
+                nombre=fila[1],
+                tipo=fila[2],
+                precio_noche=fila[3],
+                calificacion=fila[4],
+                direccion=fila[5],
+                url_reserva=fila[6],
+                destino_id=fila[7],
+            )
+        except Exception as error:
+            logger.error(f"Error al obtener el hospedaje: {error}")
+            return None
+        finally:
+            cursor.close()
+            conexion.close()
+
     def obtener_por_destino(self, destino_id: int) -> list[Hospedaje]:
         conexion = self._obtener_conexion()
         cursor = conexion.cursor()
