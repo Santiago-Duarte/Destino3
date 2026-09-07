@@ -1,14 +1,14 @@
 import logging
 from typing import Optional
 from src.repositories.base_repository import BaseRepository
-from src.services.ai_evaluator import EvaluacionIAOutput
+from src.models.evaluacion import Evaluacion
 
 logger = logging.getLogger(__name__)
 
 
 class EvaluacionesRepository(BaseRepository):
 
-    def guardar(self, evaluacion: EvaluacionIAOutput, hospedaje_id: int) -> Optional[int]:
+    def guardar(self, evaluacion: Evaluacion) -> Optional[int]:
         conexion = self._obtener_conexion()
         cursor = conexion.cursor()
 
@@ -25,7 +25,7 @@ class EvaluacionesRepository(BaseRepository):
                     evaluacion.puntos_fuertes,
                     evaluacion.puntos_debiles,
                     evaluacion.score_calidad_precio,
-                    hospedaje_id,
+                    evaluacion.hospedaje_id,
                 )
             )
             evaluacion_id = cursor.fetchone()[0]
@@ -39,13 +39,13 @@ class EvaluacionesRepository(BaseRepository):
             cursor.close()
             conexion.close()
 
-    def obtener_por_hospedaje(self, hospedaje_id: int) -> Optional[EvaluacionIAOutput]:
+    def obtener_por_hospedaje(self, hospedaje_id: int) -> Optional[Evaluacion]:
         conexion = self._obtener_conexion()
         cursor = conexion.cursor()
 
         try:
             query = """
-                SELECT resumen_ejecutivo, puntos_fuertes, puntos_debiles, score_calidad_precio, hospedaje_id
+                SELECT id, resumen_ejecutivo, puntos_fuertes, puntos_debiles, score_calidad_precio, hospedaje_id
                 FROM evaluaciones_ia
                 WHERE hospedaje_id = %s;
             """
@@ -55,12 +55,13 @@ class EvaluacionesRepository(BaseRepository):
             if fila is None:
                 return None
 
-            return EvaluacionIAOutput(
-                id_temporal=fila[4],
-                resumen_ejecutivo=fila[0],
-                puntos_fuertes=fila[1],
-                puntos_debiles=fila[2],
-                score_calidad_precio=fila[3],
+            return Evaluacion(
+                id=fila[0],
+                resumen_ejecutivo=fila[1],
+                puntos_fuertes=fila[2],
+                puntos_debiles=fila[3],
+                score_calidad_precio=fila[4],
+                hospedaje_id=fila[5],
             )
         except Exception as error:
             logger.error(f"Error al obtener la evaluación: {error}")
