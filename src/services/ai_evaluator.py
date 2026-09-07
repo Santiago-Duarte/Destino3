@@ -7,6 +7,7 @@ from google import genai
 from google.genai import types
 from src.models.hospedaje import Hospedaje
 from src.models.destino import Destino
+from src.models.evaluacion import Evaluacion
 from src.repositories.destino_repository import DestinoRepository
 from src.services.api_searcher import construir_link_google_hotels
 
@@ -21,6 +22,16 @@ class EvaluacionIAOutput(BaseModel):
 
 class Top3Evaluaciones(BaseModel):
     top_3: list[EvaluacionIAOutput]
+
+
+def convertir_a_evaluacion(dto: EvaluacionIAOutput, hospedaje_id: int) -> Evaluacion:
+    return Evaluacion(
+        resumen_ejecutivo=dto.resumen_ejecutivo,
+        puntos_fuertes=dto.puntos_fuertes,
+        puntos_debiles=dto.puntos_debiles,
+        score_calidad_precio=dto.score_calidad_precio,
+        hospedaje_id=hospedaje_id,
+    )
 
 
 def seleccionar_candidatos( s: list[Hospedaje], presupuesto_max: float) -> list:
@@ -44,7 +55,7 @@ class AIEvaluator:
             raise ValueError("GEMINI_API_KEY no está definida")
         self.client = genai.Client(api_key=api_key)
 
-    def evaluar_hospedaje(self, hospedajes: list[Hospedaje], presupuesto_max: float, preferencias: str):
+    def evaluar_hospedaje(self, hospedajes: list[Hospedaje], presupuesto_max: float, preferencias: str) -> tuple[Top3Evaluaciones, dict[int, Hospedaje]] | None:
 
         mejores = seleccionar_candidatos(hospedajes, presupuesto_max)
 
@@ -52,8 +63,10 @@ class AIEvaluator:
             print("No se encontraron hospedajes dentro del presupuesto.")
             return None
 
+        mapping = {}
         lista_resumida = []
         for i, hospedaje in enumerate(mejores, start=1):
+            mapping[i] = hospedaje
             lista_resumida.append({
                 "id_temporal": i,
                 "nombre": hospedaje.nombre,
@@ -87,7 +100,8 @@ class AIEvaluator:
                     response_schema=Top3Evaluaciones,
                 ),
             )
-            return Top3Evaluaciones.model_validate_json(response.text)
+            respuesta = Top3Evaluaciones.model_validate_json(response.text)
+            return respuesta, mapping
         except Exception as e:
             print(f"Error al evaluar hospedaje: {e}")
             return None
@@ -118,14 +132,21 @@ if __name__ == "__main__":
         crear_lista_hospedajes(datos, destino_id, fecha_inicio, fecha_fin, 80, ciudad, pais, hospedajes)
 
         evaluador = AIEvaluator()
-        analisis = evaluador.evaluar_hospedaje(
+        resultado = evaluador.evaluar_hospedaje(
             hospedajes,
             80,
             "Con parqueadero, vista al mar, dos cuartos, para cuatro personas"
         )
 
         print("\n--- Resultado del Análisis de Gemini ---")
-        print(analisis.model_dump_json(indent=4) if analisis else "sin resultados")
+        if resultado:
+            analisis, mapping = resultado
+            print(analisis.model_dump_json(indent=4))
+            print(f"\nMapping id_temporal → hospedaje_id:")
+            for temp_id, h in mapping.items():
+                print(f"  {temp_id} → {h.id} ({h.nombre})")
+        else:
+            print("sin resultados")
 
     else:
         print("No se pudo evaluar hospedaje")
