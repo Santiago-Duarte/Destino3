@@ -10,7 +10,7 @@ from src.models.hospedaje import Hospedaje
 RUTA_RESPUESTA_PRUEBA = Path(__file__).resolve().parents[2] / "respuesta_prueba.json"
 
 
-def construir_link_google_hotels(property_token, fecha_inicio, fecha_fin, query):
+def construir_link_google_hotels(property_token: str, fecha_inicio: str, fecha_fin: str, query: str) -> str:
     return (
         f"https://www.google.com/travel/hotels/entity/{property_token}"
         f"?check_in={fecha_inicio}&check_out={fecha_fin}"
@@ -18,7 +18,22 @@ def construir_link_google_hotels(property_token, fecha_inicio, fecha_fin, query)
     )
 
 
-def buscar_hospedajes_raw(ciudad: str, pais: str, presupuesto_maximo: float = None) -> dict | None:
+def buscar_hospedajes_raw(ciudad: str, pais: str, presupuesto_maximo: float | None = None) -> dict | None:
+    """Consulta la API de Google Hotels vía SerpAPI y devuelve la respuesta sin procesar.
+
+    Fija de forma automática una estancia de dos noches a partir de una semana
+    y, si se indica presupuesto, lo traduce al parámetro ``max_price`` de la API.
+
+    Args:
+        ciudad: Nombre de la ciudad a buscar.
+        pais: País de la ciudad.
+        presupuesto_maximo: Precio por noche máximo en USD; si es ``None``
+            no se aplica filtro de precio.
+
+    Returns:
+        El JSON de la respuesta de SerpAPI, o ``None`` si falta la clave
+        ``SERPAPI_KEY``, la petición falla o la API devuelve un error.
+    """
 
     api_key = os.getenv("SERPAPI_KEY")
     if api_key is None:
@@ -57,7 +72,22 @@ def buscar_hospedajes_raw(ciudad: str, pais: str, presupuesto_maximo: float = No
     return resultado
 
 
-def buscar_hospedajes(ciudad: str, pais: str, presupuesto_maximo: float = None) -> list[Hospedaje]:
+def buscar_hospedajes(ciudad: str, pais: str, presupuesto_maximo: float | None = None) -> list[Hospedaje]:
+    """Busca hospedajes en SerpAPI, los persiste y los convierte en modelos.
+
+    Garantiza que el destino exista en base de datos antes de mapear los
+    resultados, por lo que necesita conexión a la base.
+
+    Args:
+        ciudad: Nombre de la ciudad a buscar.
+        pais: País de la ciudad.
+        presupuesto_maximo: Precio por noche máximo en USD; si es ``None``
+            no se aplica filtro de precio.
+
+    Returns:
+        La lista de hospedajes mapeados; vacía si la API falla, no hay
+        resultados o no se puede obtener o crear el destino.
+    """
     resultado = buscar_hospedajes_raw(ciudad, pais, presupuesto_maximo)
 
     if not resultado or "properties" not in resultado:
@@ -108,11 +138,31 @@ def crear_lista_hospedajes(
         id_destino: int,
         fecha_inicio: str,
         fecha_fin: str,
-        presupuesto_maximo: float,
+        presupuesto_maximo: float | None,
         ciudad: str,
         pais: str,
         hospedajes: list[Hospedaje]
 ) -> list[Hospedaje]:
+    """Convierte las ``properties`` de la respuesta de SerpAPI en objetos ``Hospedaje``.
+
+    Descarta los lugares sin precio o por encima del presupuesto y construye la
+    URL de reserva a partir del ``property_token`` cuando hay fechas de estancia;
+    si no, usa el enlace genérico reportado por la API.
+
+    Args:
+        resultado: Respuesta cruda de SerpAPI con la clave ``properties``.
+        id_destino: Identificador del destino ya persistido en base de datos.
+        fecha_inicio: Fecha de check-in en formato ``YYYY-MM-DD``.
+        fecha_fin: Fecha de check-out en formato ``YYYY-MM-DD``.
+        presupuesto_maximo: Precio por noche máximo en USD; si es ``None``
+            no se filtra por precio.
+        ciudad: Ciudad usada para armar el enlace de reserva.
+        pais: País usado para armar el enlace de reserva.
+        hospedajes: Lista que se incrementa en sitio con cada hospedaje válido.
+
+    Returns:
+        La misma lista ``hospedajes`` recibida, con los hospedajes añadidos.
+    """
     for lugar in resultado["properties"]:
         rate_info = lugar.get("rate_per_night", {})
         precio = rate_info.get("extracted_lowest")
