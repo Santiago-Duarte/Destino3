@@ -9,6 +9,12 @@ logger = logging.getLogger(__name__)
 class DestinoRepository(BaseRepository):
 
     def guardar(self, destino: Destino) -> Optional[int]:
+        """Inserta un destino validando que ciudad y país no estén vacíos.
+
+        Returns:
+            El id generado, o ``None`` si faltan datos obligatorios o el
+            ``INSERT`` falla (la transacción se revierte).
+        """
         ciudad = (destino.ciudad or "").strip()
         pais = (destino.pais or "").strip()
 
@@ -34,6 +40,11 @@ class DestinoRepository(BaseRepository):
             conexion.close()
 
     def obtener_todos(self) -> list[Destino]:
+        """Recupera la tabla completa de destinos.
+
+        Returns:
+            Todos los destinos persistidos; lista vacía si la consulta falla.
+        """
         conexion = self._obtener_conexion()
         cursor = conexion.cursor()
 
@@ -56,6 +67,20 @@ class DestinoRepository(BaseRepository):
             conexion.close()
 
     def obtener_o_crear(self, destino: Destino) -> Optional[int]:
+        """Devuelve el id de un destino por ciudad/país o lo crea si no existe.
+
+        La búsqueda ignora mayúsculas, espacios sobrantes (índice único
+        ``LOWER(TRIM(...))``). Ante una inserción concurrente que dispare el
+        conflicto del índice único, se reintenta la consulta para recuperar el
+        registro ya insertado por otra transacción.
+
+        Args:
+            destino: Destino cuyo id se busca o se crea.
+
+        Returns:
+            El id del destino existente o recién creado, o ``None`` si faltan
+            datos obligatorios o la operación falla.
+        """
         ciudad = (destino.ciudad or "").strip()
         pais = (destino.pais or "").strip()
 

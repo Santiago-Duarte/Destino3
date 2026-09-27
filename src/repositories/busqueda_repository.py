@@ -9,6 +9,12 @@ logger = logging.getLogger(__name__)
 class BusquedaRepository(BaseRepository):
 
     def guardar(self, busqueda: Busqueda) -> Optional[int]:
+        """Inserta una búsqueda con sus criterios de zona, presupuesto y fechas.
+
+        Returns:
+            El id generado, o ``None`` si el ``INSERT`` falla (la transacción
+            se revierte).
+        """
         conexion = self._obtener_conexion()
         cursor = conexion.cursor()
 
@@ -38,6 +44,11 @@ class BusquedaRepository(BaseRepository):
             conexion.close()
 
     def obtener_por_id(self, busqueda_id: int) -> Optional[Busqueda]:
+        """Recupera una búsqueda por su id.
+
+        Returns:
+            La búsqueda encontrada, o ``None`` si no existe o la consulta falla.
+        """
         conexion = self._obtener_conexion()
         cursor = conexion.cursor()
 

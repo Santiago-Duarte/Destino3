@@ -9,6 +9,12 @@ logger = logging.getLogger(__name__)
 class HospedajeRepository(BaseRepository):
 
     def guardar(self, hospedaje: Hospedaje) -> Optional[int]:
+        """Inserta un hospedaje asociado a su destino.
+
+        Returns:
+            El id generado, o ``None`` si ``destino_id`` es ``None`` o el
+            ``INSERT`` falla (la transacción se revierte).
+        """
         if hospedaje.destino_id is None:
             logger.error("Error al guardar el hospedaje: destino_id es obligatorio")
             return None
@@ -43,6 +49,11 @@ class HospedajeRepository(BaseRepository):
             conexion.close()
 
     def obtener_por_id(self, hospedaje_id: int) -> Optional[Hospedaje]:
+        """Recupera un hospedaje por su id.
+
+        Returns:
+            El hospedaje encontrado, o ``None`` si no existe o la consulta falla.
+        """
         conexion = self._obtener_conexion()
         cursor = conexion.cursor()
 
@@ -76,6 +87,12 @@ class HospedajeRepository(BaseRepository):
             conexion.close()
 
     def obtener_por_destino(self, destino_id: int) -> list[Hospedaje]:
+        """Recupera todos los hospedajes de un destino.
+
+        Returns:
+            Los hospedajes del destino; lista vacía si no hay coincidencias o
+            la consulta falla.
+        """
         conexion = self._obtener_conexion()
         cursor = conexion.cursor()
 

@@ -9,6 +9,16 @@ logger = logging.getLogger(__name__)
 class EvaluacionesRepository(BaseRepository):
 
     def guardar(self, evaluacion: Evaluacion) -> Optional[int]:
+        """Inserta la evaluación generada por IA para un hospedaje.
+
+        Returns:
+            El id generado.
+
+        Raises:
+            Exception: Se propaga cualquier error de la base de datos después
+                de revertir la transacción, para que el llamador decida cómo
+                manejarlo.
+        """
         conexion = self._obtener_conexion()
         cursor = conexion.cursor()
 
@@ -40,6 +50,11 @@ class EvaluacionesRepository(BaseRepository):
             conexion.close()
 
     def obtener_por_hospedaje(self, hospedaje_id: int) -> Optional[Evaluacion]:
+        """Recupera la evaluación asociada a un hospedaje.
+
+        Returns:
+            La evaluación encontrada, o ``None`` si no existe o la consulta falla.
+        """
         conexion = self._obtener_conexion()
         cursor = conexion.cursor()
 
