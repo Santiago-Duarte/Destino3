@@ -1,12 +1,23 @@
 import os
 import logging
+from collections.abc import Iterator
 from contextlib import contextmanager
 import psycopg2
+from psycopg2.extensions import connection as ConexionPostgres
 
 logger = logging.getLogger(__name__)
 
 
-def obtener_conexion():
+def obtener_conexion() -> ConexionPostgres | None:
+    """Establece una conexión a PostgreSQL eligiendo la base según el entorno activo.
+
+    Selecciona ``DB_TEST_NAME`` cuando ``ENVIRONMENT=testing``; en cualquier otro
+    caso usa ``DB_NAME``. Todos los fallos (red, credenciales, variables de
+    entorno ausentes) se tragan y se registran en el log.
+
+    Returns:
+        La conexión abierta, o ``None`` si la conexión falla por cualquier motivo.
+    """
     entorno = os.getenv('ENVIRONMENT', 'development')
 
     if entorno == 'testing':
@@ -31,7 +42,18 @@ def obtener_conexion():
 
 
 @contextmanager
-def conexion_manager():
+def conexion_manager() -> Iterator[ConexionPostgres]:
+    """Expone una conexión como context manager con transacción automática.
+
+    Confirma la transacción al salir sin errores, la revierte si se propaga una
+    excepción y siempre cierra la conexión en el bloque ``finally``.
+
+    Yields:
+        La conexión abierta, lista para ejecutar sentencias SQL.
+
+    Raises:
+        ConnectionError: Si ``obtener_conexion`` devuelve ``None``.
+    """
     conexion = obtener_conexion()
     if conexion is None:
         raise ConnectionError("No se pudo establecer conexión con la base de datos")
