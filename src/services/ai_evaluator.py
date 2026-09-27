@@ -34,7 +34,21 @@ def convertir_a_evaluacion(dto: EvaluacionIAOutput, hospedaje_id: int) -> Evalua
     )
 
 
-def seleccionar_candidatos( s: list[Hospedaje], presupuesto_max: float) -> list:
+def seleccionar_candidatos(s: list[Hospedaje], presupuesto_max: float) -> list[Hospedaje]:
+    """Preselecciona los hospedajes que pasarán a la evaluación del modelo.
+
+    Filtra los que exceden el presupuesto o no tienen precio y luego ordena por
+    calificación descendente (los empates se resuelven por precio ascendente),
+    quedándose con los 5 primeros.
+
+    Args:
+        s: Hospedajes disponibles obtenidos de la búsqueda.
+        presupuesto_max: Precio por noche máximo en USD.
+
+    Returns:
+        Hasta 5 hospedajes ordenados de mejor a peor relación calidad-precio;
+        vacía si ninguno cumple el presupuesto.
+    """
     candidatos_validos = [
         h for h in s
         if h.precio_noche is not None and h.precio_noche <= presupuesto_max
@@ -49,13 +63,37 @@ def seleccionar_candidatos( s: list[Hospedaje], presupuesto_max: float) -> list:
 
 class AIEvaluator:
 
-    def __init__(self):
+    def __init__(self) -> None:
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             raise ValueError("GEMINI_API_KEY no está definida")
         self.client = genai.Client(api_key=api_key)
 
-    def evaluar_hospedaje(self, hospedajes: list[Hospedaje], presupuesto_max: float, preferencias: str) -> tuple[Top3Evaluaciones, dict[int, Hospedaje]] | None:
+    def evaluar_hospedaje(
+            self,
+            hospedajes: list[Hospedaje],
+            presupuesto_max: float,
+            preferencias: str,
+    ) -> tuple[Top3Evaluaciones, dict[int, Hospedaje]] | None:
+        """Pide a Gemini que elija y puntúe los 3 mejores hospedajes de la lista.
+
+        Asigna a cada candidato un ``id_temporal`` correlativo para que el modelo
+        responda con JSON estructurado sin riesgo de confundir registros, y
+        conserva el mapeo id_temporal -> hospedaje para traducir la respuesta.
+
+        Args:
+            hospedajes: Candidatos disponibles.
+            presupuesto_max: Presupuesto máximo por noche en USD, incluido en el prompt.
+            preferencias: Criterios adicionales del usuario (vista, parqueadero, etc.).
+
+        Returns:
+            Una tupla ``(respuesta_ia, mapping)`` donde ``respuesta_ia`` contiene
+            el top 3 y ``mapping`` traduce cada ``id_temporal`` a su hospedaje
+            original, o ``None`` si no hay candidatos o Gemini falla.
+
+        Raises:
+            ValueError: Si la variable de entorno ``GEMINI_API_KEY`` no está definida.
+        """
 
         mejores = seleccionar_candidatos(hospedajes, presupuesto_max)
 
