@@ -5,7 +5,7 @@
 
 ## Bloque A — Configuración (base de todo)
 
-- [ ] **A1. Crear `src/config/settings.py`** (~20 min)
+- [x] **A1. Crear `src/config/settings.py`** (~20 min)
   - **RF:** RF-9, RF-10
   - **Depende de:** —
   - **Hecho cuando:** `SERPAPI_MAX_PAGES=2 python3 -c "from src.config import settings; print(settings.SERPAPI_MAX_PAGES)"` imprime `2` y expone timeout, reintentos, backoff, `max_results`, `rate_limit_rps` y claves sin hardcodear en servicios.
