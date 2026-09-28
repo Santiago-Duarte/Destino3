@@ -12,11 +12,11 @@
 
 ## Bloque B — Modelos Pydantic
 
-- [ ] **B1. Crear `src/models/evaluacion_ia.py`** con `EvaluacionIAOutput` (`id_temporal`, `resumen_ejecutivo`, `puntos_fuertes`, `puntos_debiles`, `score_calidad_precio` 1-10) y `LoteEvaluacionesIA` (~20 min)
+- [x] **B1. Crear `src/models/evaluacion_ia.py`** con `EvaluacionIAOutput` (`id_temporal`, `resumen_ejecutivo`, `puntos_fuertes`, `puntos_debiles`, `score_calidad_precio` 1-10) y `LoteEvaluacionesIA` (~20 min)
   - **RF:** RF-6
   - **Depende de:** —
   - **Hecho cuando:** `LoteEvaluacionesIA.model_validate_json(json_inválido)` lanza `ValidationError` y uno válido parsea sin error.
-- [ ] **B2. Migrar `ai_evaluator.py` y `evaluacion_orchestrator.py` a los modelos de `models/`** (eliminar `Top3Evaluaciones` local, campo `top_3` → `evaluaciones`) (~20 min)
+- [x] **B2. Migrar `ai_evaluator.py` y `evaluacion_orchestrator.py` a los modelos de `models/`** (eliminar `Top3Evaluaciones` local, campo `top_3` → `evaluaciones`) (~20 min)
   - **RF:** RF-5, RF-6
   - **Depende de:** B1
   - **Hecho cuando:** `grep -rn "Top3Evaluaciones" src/` no da resultados y la suite actual queda verde (el prompt no se modifica: fuera de alcance).
