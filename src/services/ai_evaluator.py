@@ -2,26 +2,11 @@ import os
 import json
 from pathlib import Path
 
-from pydantic import BaseModel, Field
 from google import genai
 from google.genai import types
 from src.models.hospedaje import Hospedaje
-from src.models.destino import Destino
 from src.models.evaluacion import Evaluacion
-from src.repositories.destino_repository import DestinoRepository
-from src.services.api_searcher import construir_link_google_hotels
-
-
-class EvaluacionIAOutput(BaseModel):
-    id_temporal: int
-    resumen_ejecutivo: str
-    puntos_fuertes: str
-    puntos_debiles: str
-    score_calidad_precio: int = Field(ge=1, le=10)
-
-
-class Top3Evaluaciones(BaseModel):
-    top_3: list[EvaluacionIAOutput]
+from src.models.evaluacion_ia import EvaluacionIAOutput, LoteEvaluacionesIA
 
 
 def convertir_a_evaluacion(dto: EvaluacionIAOutput, hospedaje_id: int) -> Evaluacion:
@@ -74,7 +59,7 @@ class AIEvaluator:
             hospedajes: list[Hospedaje],
             presupuesto_max: float,
             preferencias: str,
-    ) -> tuple[Top3Evaluaciones, dict[int, Hospedaje]] | None:
+    ) -> tuple[LoteEvaluacionesIA, dict[int, Hospedaje]] | None:
         """Pide a Gemini que elija y puntúe los 3 mejores hospedajes de la lista.
 
         Asigna a cada candidato un ``id_temporal`` correlativo para que el modelo
@@ -135,56 +120,13 @@ class AIEvaluator:
                 contents=prompt,
                 config = types.GenerateContentConfig(
                     response_mime_type="application/json",
-                    response_schema=Top3Evaluaciones,
+                    response_schema=LoteEvaluacionesIA,
                 ),
             )
-            respuesta = Top3Evaluaciones.model_validate_json(response.text)
+            respuesta = LoteEvaluacionesIA.model_validate_json(response.text)
             return respuesta, mapping
         except Exception as e:
             print(f"Error al evaluar hospedaje: {e}")
             return None
 
 
-if __name__ == "__main__":
-
-    ruta_json = Path(__file__).resolve().parents[2] / "respuesta_prueba.json"
-    with open(ruta_json, "r", encoding="utf-8") as f:
-        datos = json.load(f)
-
-    hospedajes = []
-    parametros_busqueda = datos.get("search_parameters", {})
-    fecha_inicio = parametros_busqueda.get("check_in_date")
-    fecha_fin = parametros_busqueda.get("check_out_date")
-
-    ciudad = datos.get("city", "")
-    pais = datos.get("country", "")
-
-    destino = Destino(ciudad, pais)
-    destino_repo = DestinoRepository()
-    destino_id = destino_repo.obtener_o_crear(destino)
-
-    if destino_id is not None:
-
-        from src.services.api_searcher import crear_lista_hospedajes
-
-        crear_lista_hospedajes(datos, destino_id, fecha_inicio, fecha_fin, 80, ciudad, pais, hospedajes)
-
-        evaluador = AIEvaluator()
-        resultado = evaluador.evaluar_hospedaje(
-            hospedajes,
-            80,
-            "Con parqueadero, vista al mar, dos cuartos, para cuatro personas"
-        )
-
-        print("\n--- Resultado del Análisis de Gemini ---")
-        if resultado:
-            analisis, mapping = resultado
-            print(analisis.model_dump_json(indent=4))
-            print(f"\nMapping id_temporal → hospedaje_id:")
-            for temp_id, h in mapping.items():
-                print(f"  {temp_id} → {h.id} ({h.nombre})")
-        else:
-            print("sin resultados")
-
-    else:
-        print("No se pudo evaluar hospedaje")
