@@ -1,8 +1,9 @@
 import logging
-from src.services.ai_evaluator import AIEvaluator, Top3Evaluaciones, convertir_a_evaluacion
+from src.services.ai_evaluator import AIEvaluator, convertir_a_evaluacion
 from src.repositories.evaluaciones_repository import EvaluacionesRepository
 from src.repositories.recomendacion_repository import RecomendacionRepository
 from src.models.evaluacion import Evaluacion
+from src.models.evaluacion_ia import LoteEvaluacionesIA
 from src.models.hospedaje import Hospedaje
 from src.models.recomendaciones import Recomendaciones
 
@@ -48,7 +49,7 @@ class EvaluacionOrchestrator:
         respuesta, mapping = resultado
         evaluaciones_guardadas = []
 
-        for evaluacion_ia in respuesta.top_3:
+        for evaluacion_ia in respuesta.evaluaciones:
             hospedaje_real = mapping.get(evaluacion_ia.id_temporal)
 
             if hospedaje_real is None:
@@ -68,7 +69,7 @@ class EvaluacionOrchestrator:
 
     def _guardar_recomendaciones(
             self,
-            respuesta: Top3Evaluaciones,
+            respuesta: LoteEvaluacionesIA,
             busqueda_id: int,
             mapping: dict[int, Hospedaje],
     ) -> None:
@@ -81,7 +82,7 @@ class EvaluacionOrchestrator:
         """
         recomendaciones = []
 
-        for posicion, evaluacion_ia in enumerate(respuesta.top_3, start=1):
+        for posicion, evaluacion_ia in enumerate(respuesta.evaluaciones, start=1):
             hospedaje_real = mapping.get(evaluacion_ia.id_temporal)
 
             if hospedaje_real is None:
