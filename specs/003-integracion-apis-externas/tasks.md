@@ -23,7 +23,7 @@
 
 ## Bloque C — Repositories
 
-- [ ] **C1. `HospedajeRepository.guardar_varios()` con transacción única** (~25 min)
+- [x] **C1. `HospedajeRepository.guardar_varios()` con transacción única** (~25 min)
   - **RF:** RF-4
   - **Depende de:** —
   - **Hecho cuando:** guardar 3 hospedajes devuelve 3 IDs `int` y, al forzar error en el 3º, la tabla queda sin filas (rollback).
