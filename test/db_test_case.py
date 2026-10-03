@@ -71,7 +71,7 @@ class BaseDBTestCase(unittest.TestCase):
             destino_id=destino_id,
         )
         valores.update(campos)
-        return self.hospedaje_repo.guardar(Hospedaje(**valores))
+        return self.hospedaje_repo.guardar_varios([Hospedaje(**valores)])[0]
 
     def crear_busqueda_con_recomendaciones(self, destino_id, num_hospedajes=3):
         """Crea una búsqueda con recomendaciones para los hospedajes creados."""

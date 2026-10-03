@@ -211,7 +211,7 @@ class TestIntegracionBuscarYGuardar(BaseDBTestCase):
         hospedajes = buscar_hospedajes("Medellin", "Colombia")
         self.assertEqual(len(hospedajes), 2)
         hospedaje_repo = HospedajeRepository()
-        ids = [hospedaje_repo.guardar(h) for h in hospedajes]
+        ids = hospedaje_repo.guardar_varios(hospedajes)
         self.assertTrue(all(isinstance(i, int) for i in ids))
         persistidos = hospedaje_repo.obtener_por_destino(hospedajes[0].destino_id)
         self.assertEqual(len(persistidos), 2)
