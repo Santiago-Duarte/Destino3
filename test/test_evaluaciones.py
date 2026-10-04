@@ -1,7 +1,7 @@
 import unittest
 from psycopg2 import errors
 from test.db_test_case import BaseDBTestCase
-from src.repositories.evaluaciones_repository import EvaluacionesRepository
+from src.repositories.evaluacion_ia_repository import EvaluacionesRepository
 from src.models.evaluacion import Evaluacion
 
 

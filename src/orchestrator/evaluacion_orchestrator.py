@@ -1,6 +1,6 @@
 import logging
 from src.services.ai_evaluator import AIEvaluator, convertir_a_evaluacion
-from src.repositories.evaluaciones_repository import EvaluacionesRepository
+from src.repositories.evaluacion_ia_repository import EvaluacionesRepository
 from src.repositories.recomendacion_repository import RecomendacionRepository
 from src.models.evaluacion import Evaluacion
 from src.models.evaluacion_ia import LoteEvaluacionesIA
