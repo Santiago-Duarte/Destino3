@@ -1,7 +1,7 @@
 # Tareas — Spec 003: Integración de APIs Externas (SerpAPI + Gemini) y Persistencia
 
 **Reglas:** cada tarea <30 min · ordenadas por dependencia · una sola línea `Hecho cuando:` verificable · al terminar cada tarea: `python3 -m pytest test/ -q` en verde.
-**Nombres de módulos:** se mantienen los actuales (`api_searcher.py`, `ai_evaluator.py`, `evaluaciones_repository.py`); `plan.md` se corrige en H4.
+**Nombres de módulos:** se mantienen los actuales (`api_searcher.py`, `ai_evaluator.py`, `evaluacion_ia_repository.py`); `plan.md` se corrige en H4.
 
 ## Bloque A — Configuración (base de todo)
 

@@ -16,7 +16,7 @@ modelos → repositories → services → orchestration → config → entry poi
 | **Configuración** | `src/config/settings.py` | Carga centralizada de parámetros operativos (timeouts, reintentos, límites de tasa, paginación, claves API) desde variables de entorno | RF-9, RF-10 |
 | **Modelo de evaluación IA** | `src/models/evaluacion_ia.py` | Esquema Pydantic `EvaluacionIAOutput` + `LoteEvaluacionesIA` para validar respuesta de Gemini | RF-6 |
 | **Cliente SerpAPI** | `src/services/serpapi_client.py` | Búsqueda de hospedajes con paginación, rate limiting, reintentos, manejo HTTP 429 | RF-1, RF-2, RF-3, RF-9 |
-| **Evaluador Gemini** | `src/services/gemini_evaluator.py` | Evaluación en lote (batch), validación Pydantic, reintentos con backoff exponencial | RF-5, RF-6, RF-7, RF-9 |
+| **Evaluador Gemini** | `src/services/ai_evaluator.py` | Evaluación en lote (batch), validación Pydantic, reintentos con backoff exponencial | RF-5, RF-6, RF-7, RF-9 |
 | **Repositorio Hospedajes** | `src/repositories/hospedaje_repository.py` | Persistencia de hospedajes con IDs reales (FK a destinos), transacción única | RF-4 |
 | **Repositorio Evaluaciones IA** | `src/repositories/evaluacion_ia_repository.py` | Persistencia de evaluaciones vinculadas a hospedaje_id (solo campos de negocio) | RF-8 |
 | **Orquestador de Integración** | `src/orchestrator/integracion_orchestrator.py` | Flujo completo: búsqueda → persistencia hospedajes → evaluación IA batch → persistencia evaluaciones | RF-1 a RF-8, RF-9 |
@@ -39,7 +39,7 @@ modelos → repositories → services → orchestration → config → entry poi
 | `EvaluacionIAOutput` | `id_temporal: int`, `resumen_ejecutivo: str`, `puntos_fuertes: str`, `puntos_debiles: str`, `score_calidad_precio: int (1-10)` | Respuesta Gemini (validada) | No (solo en memoria) |
 | `LoteEvaluacionesIA` | `evaluaciones: List[EvaluacionIAOutput]` | Respuesta Gemini (validada) | No (solo en memoria) |
 | `Hospedaje` | `id: int`, `destino_id: int`, `nombre: str`, `tipo: str`, `precio_noche: float`, `calificacion: float`, `direccion: str`, `url_reserva: str` | SerpAPI → BD | `hospedajes` |
-| `EvaluacionIA` | `id: int`, `hospedaje_id: int`, `resumen_ejecutivo: str`, `puntos_fuertes: str`, `puntos_debiles: str`, `score_calidad_precio: int` | `EvaluacionIAOutput` + `hospedaje_id` real | `evaluaciones_ia` |
+| `Evaluacion` | `id: int`, `hospedaje_id: int`, `resumen_ejecutivo: str`, `puntos_fuertes: str`, `puntos_debiles: str`, `score_calidad_precio: int` | `EvaluacionIAOutput` + `hospedaje_id` real | `evaluaciones_ia` |
 
 > **Nota**: `id_temporal` es efímero (solo para correlacionar request/response Gemini). Nunca se persiste (AGENTS.md #7).
 
