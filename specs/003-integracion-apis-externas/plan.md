@@ -15,11 +15,11 @@ modelos → repositories → services → orchestration → config → entry poi
 |--------|------|-----------------|---------------|
 | **Configuración** | `src/config/settings.py` | Carga centralizada de parámetros operativos (timeouts, reintentos, límites de tasa, paginación, claves API) desde variables de entorno | RF-9, RF-10 |
 | **Modelo de evaluación IA** | `src/models/evaluacion_ia.py` | Esquema Pydantic `EvaluacionIAOutput` + `LoteEvaluacionesIA` para validar respuesta de Gemini | RF-6 |
-| **Cliente SerpAPI** | `src/services/serpapi_client.py` | Búsqueda de hospedajes con paginación, rate limiting, reintentos, manejo HTTP 429 | RF-1, RF-2, RF-3, RF-9 |
-| **Evaluador Gemini** | `src/services/ai_evaluator.py` | Evaluación en lote (batch), validación Pydantic, reintentos con backoff exponencial | RF-5, RF-6, RF-7, RF-9 |
+| **Cliente SerpAPI** | `src/services/buscador_serpapi.py` | Búsqueda de hospedajes con paginación, rate limiting, reintentos, manejo HTTP 429 | RF-1, RF-2, RF-3, RF-9 |
+| **Evaluador Gemini** | `src/services/evaluador_ia.py` | Evaluación en lote (batch), validación Pydantic, reintentos con backoff exponencial | RF-5, RF-6, RF-7, RF-9 |
 | **Repositorio Hospedajes** | `src/repositories/hospedaje_repository.py` | Persistencia de hospedajes con IDs reales (FK a destinos), transacción única | RF-4 |
 | **Repositorio Evaluaciones IA** | `src/repositories/evaluacion_ia_repository.py` | Persistencia de evaluaciones vinculadas a hospedaje_id (solo campos de negocio) | RF-8 |
-| **Orquestador de Integración** | `src/orchestrator/integracion_orchestrator.py` | Flujo completo: búsqueda → persistencia hospedajes → evaluación IA batch → persistencia evaluaciones | RF-1 a RF-8, RF-9 |
+| **Orquestador de Integración** | `src/orchestrator/orquestador_integracion.py` | Flujo completo: búsqueda → persistencia hospedajes → evaluación IA batch → persistencia evaluaciones | RF-1 a RF-8, RF-9 |
 | **Fixtures de prueba** | `test/fixtures/` | JSONs para: hospedaje completo, sin reseñas, respuesta IA válida/inválida, rate limit 429, paginación | RF-11 |
 
 ---
@@ -41,7 +41,7 @@ modelos → repositories → services → orchestration → config → entry poi
 | `Hospedaje` | `id: int`, `destino_id: int`, `nombre: str`, `tipo: str`, `precio_noche: float`, `calificacion: float`, `direccion: str`, `url_reserva: str` | SerpAPI → BD | `hospedajes` |
 | `Evaluacion` | `id: int`, `hospedaje_id: int`, `resumen_ejecutivo: str`, `puntos_fuertes: str`, `puntos_debiles: str`, `score_calidad_precio: int` | `EvaluacionIAOutput` + `hospedaje_id` real | `evaluaciones_ia` |
 
-> **Nota**: `id_temporal` es efímero (solo para correlacionar request/response Gemini). Nunca se persiste (AGENTS.md #7).
+> **Nota**: `id_temporal` es efímero (solo para correlacionar request/response Gemini). Nunca se persiste (constitución #4).
 
 ---
 
@@ -55,9 +55,9 @@ modelos → repositories → services → orchestration → config → entry poi
 | **Prompt y modelo IA hardcoded en esta fase** | Externalizar a config / plantillas | Decisión explícita en Fuera de alcance; reduce alcance y riesgo. |
 | **Rate limiting con token bucket simple + headers 429** | Circuit breaker completo / librería externa (tenacity, etc.) | RF-9 pide "límites operativos configurados", no infraestructura compleja; token bucket es ligero y suficiente. |
 | **Reintentos con backoff exponencial (base configurable, max 3)** | Reintentos fijos / sin reintentos | RF-2, RF-7, NFR Resiliencia exigen "espera progresiva" y "política limitada". |
-| **Validación Pydantic estricta en respuesta Gemini** | Validación manual / sin validación | AGENTS.md #6: "Gemini: entrada/salida estructurada + validación". |
-| **Repositorios con SQL crudo (psycopg2)** | ORM (SQLAlchemy, etc.) | AGENTS.md #3: "Repository Pattern: repositories usan SQL crudo". |
-| **Tests con unittest + mocks + BD real de pruebas** | pytest fixtures / mocks de BD / solo unit tests | AGENTS.md #9: "unittest + mocks de APIs externas; BD de pruebas para integración". |
+| **Validación Pydantic estricta en respuesta Gemini** | Validación manual / sin validación | constitución #5: "Entrada/salida de Gemini con Pydantic". |
+| **Repositorios con SQL crudo (psycopg2)** | ORM (SQLAlchemy, etc.) | constitución #3: "Repository Pattern: repositories usan SQL crudo". |
+| **Tests con unittest + mocks + BD real de pruebas** | pytest fixtures / mocks de BD / solo unit tests | constitución #7: "unittest + mocks de APIs externas; BD de pruebas para integración". |
 
 ---
 
@@ -68,7 +68,7 @@ modelos → repositories → services → orchestration → config → entry poi
 | Nivel | Herramienta | Qué prueba | RFs |
 |-------|-------------|------------|-----|
 | **Unitario — Servicios** | `unittest.mock` (patch `requests`, `google.genai`) | `SerpAPIClient`: paginación, 429, límites, timeouts, reintentos; `GeminiEvaluator`: batch, validación schema, reintentos, fallo lote | RF-1, RF-2, RF-3, RF-5, RF-6, RF-7, RF-9 |
-| **Unitario — Repositorios** | `unittest` + BD real (`destino3_test_db`) | `HospedajeRepository.guardar_varios()` transacción; `EvaluacionIARepository.guardar_varias()` FK correcta | RF-4, RF-8 |
+| **Unitario — Repositorios** | `unittest` + BD real (`destino3_test_db`) | `HospedajeRepository.guardar_lote()` transacción; `EvaluacionIARepository.guardar_lote()` FK correcta | RF-4, RF-8 |
 | **Integración** | `unittest` + BD real + mocks servicios | Flujo completo: búsqueda mock → persistencia hospedajes → evaluación mock → persistencia evaluaciones | RF-1 a RF-8, RF-11 |
 | **Manual (smoke)** | Script `python3 -m src.demo_integracion` | Contra APIs reales (opcional, con credenciales) | Criterio de finalización |
 
@@ -110,11 +110,11 @@ modelos → repositories → services → orchestration → config → entry poi
 | 2 | Modelos Pydantic evaluación IA | `src/models/evaluacion_ia.py` | Contrato de validación |
 | 3 | Repositorio Hospedajes (persistencia batch) | `src/repositories/hospedaje_repository.py` | RF-4 |
 | 4 | Repositorio Evaluaciones IA | `src/repositories/evaluacion_ia_repository.py` | RF-8 |
-| 5 | Cliente SerpAPI (paginación, rate limit, reintentos) | `src/services/serpapi_client.py` | RF-1, RF-2, RF-3, RF-9 |
+| 5 | Cliente SerpAPI (paginación, rate limit, reintentos) | `src/services/buscador_serpapi.py` | RF-1, RF-2, RF-3, RF-9 |
 | 6 | Evaluador Gemini (batch, validación, reintentos) | `src/services/gemini_evaluator.py` | RF-5, RF-6, RF-7, RF-9 |
-| 7 | Orquestador de Integración | `src/orchestrator/integracion_orchestrator.py` | Une todo el flujo |
+| 7 | Orquestador de Integración | `src/orchestrator/orquestador_integracion.py` | Une todo el flujo |
 | 8 | Fixtures de prueba | `test/fixtures/` | Base para tests |
-| 9 | Tests unitarios servicios | `test/test_serpapi_client.py`, `test/test_gemini_evaluator.py` | Mocks externos |
+| 9 | Tests unitarios servicios | `test/test_buscador_serpapi.py`, `test/test_evaluador_ia.py` | Mocks externos |
 | 10 | Tests unitarios repositorios | `test/test_hospedaje_repository.py`, `test/test_evaluacion_ia_repository.py` | BD real test |
 | 11 | Test de integración | `test/test_integracion_flujo_completo.py` | Flujo end-to-end |
 | 12 | Script demo manual | `src/demo_integracion.py` | Verificación opcional real |
@@ -125,10 +125,10 @@ modelos → repositories → services → orchestration → config → entry poi
 
 | Riesgo | Impacto | Mitigación |
 |--------|---------|------------|
-| Cambios en respuesta SerpAPI rompen mapeo | Alto | Tests con fixtures versionados; validación defensiva en `crear_lista_hospedajes` |
+| Cambios en respuesta SerpAPI rompen mapeo | Alto | Tests con fixtures versionados; validación defensiva en `mapear_propiedades_en_hospedajes` |
 | Gemini devuelve schema inesperado | Alto | Validación Pydantic estricta + reintentos con prompt correctivo (RF-7) |
 | Rate limits más estrictos de lo esperado | Medio | Configurable `rate_limit_rps`, `max_pages`, `max_results`; defaults conservadores |
-| Transacción BD falla a medio persistir | Alto | `HospedajeRepository.guardar_varios()` en transacción única; rollback automático |
+| Transacción BD falla a medio persistir | Alto | `HospedajeRepository.guardar_lote()` en transacción única; rollback automático |
 | Concurrencia rompe token bucket global | Medio | `threading.Lock` en bucket; documentar límite actual (single-process) |
 
 ---

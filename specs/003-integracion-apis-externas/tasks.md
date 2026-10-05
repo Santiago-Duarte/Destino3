@@ -1,7 +1,7 @@
 # Tareas — Spec 003: Integración de APIs Externas (SerpAPI + Gemini) y Persistencia
 
 **Reglas:** cada tarea <30 min · ordenadas por dependencia · una sola línea `Hecho cuando:` verificable · al terminar cada tarea: `python3 -m pytest test/ -q` en verde.
-**Nombres de módulos:** se mantienen los actuales (`api_searcher.py`, `ai_evaluator.py`, `evaluacion_ia_repository.py`); `plan.md` se corrige en H4.
+**Nombres de módulos:** módulos en español (`buscador_serpapi.py`, `evaluador_ia.py`, `evaluacion_ia_repository.py`, `orquestador_evaluacion.py`); `plan.md` se corrige en H4.
 
 ## Bloque A — Configuración (base de todo)
 
@@ -16,7 +16,7 @@
   - **RF:** RF-6
   - **Depende de:** —
   - **Hecho cuando:** `LoteEvaluacionesIA.model_validate_json(json_inválido)` lanza `ValidationError` y uno válido parsea sin error.
-- [x] **B2. Migrar `ai_evaluator.py` y `evaluacion_orchestrator.py` a los modelos de `models/`** (eliminar `Top3Evaluaciones` local, campo `top_3` → `evaluaciones`) (~20 min)
+- [x] **B2. Migrar `evaluador_ia.py` y `orquestador_evaluacion.py` a los modelos de `models/`** (eliminar `Top3Evaluaciones` local, campo `top_3` → `evaluaciones`) (~20 min)
   - **RF:** RF-5, RF-6
   - **Depende de:** B1
   - **Hecho cuando:** `grep -rn "Top3Evaluaciones" src/` no da resultados y la suite actual queda verde (el prompt no se modifica: fuera de alcance).
@@ -27,17 +27,17 @@
   - **RF:** RF-4
   - **Depende de:** —
   - **Hecho cuando:** guardar 3 hospedajes devuelve 3 IDs `int` y, al forzar error en el 3º, la tabla queda sin filas (rollback).
-- [ ] **C2. `EvaluacionesRepository.guardar_varias()`** con `hospedaje_id` real, solo campos de negocio, sin `id_temporal` (~25 min)
+- [x] **C2. `EvaluacionesRepository.guardar_varias()`** con `hospedaje_id` real, solo campos de negocio, sin `id_temporal` (~25 min)
   - **RF:** RF-7, RF-8
   - **Depende de:** C1
   - **Hecho cuando:** `grep -rn "id_temporal" src/repositories/` no da resultados y un error a mitad de lote revierte toda la inserción (sin filas parciales).
 
-## Bloque D — Cliente SerpAPI (`src/services/api_searcher.py`)
+## Bloque D — Cliente SerpAPI (`src/services/buscador_serpapi.py`)
 
 - [ ] **D1. Parámetros operativos desde `settings` + `logging`** (quitar `print`, propagar errores) (~20 min)
   - **RF:** RF-1, RF-10
   - **Depende de:** A1
-  - **Hecho cuando:** `grep -n "print(" src/services/api_searcher.py` no da resultados y `requests.get` recibe `timeout=settings.SERPAPI_TIMEOUT`.
+  - **Hecho cuando:** `grep -n "print(" src/services/buscador_serpapi.py` no da resultados y `requests.get` recibe `timeout=settings.SERPAPI_TIMEOUT`.
 - [ ] **D2. Paginación con `max_pages` / `max_results`** que corta y conserva acumulados (~25 min)
   - **RF:** RF-3
   - **Depende de:** D1
@@ -46,12 +46,12 @@
   - **RF:** RF-2, RF-9
   - **Depende de:** D2
   - **Hecho cuando:** mock que devuelve 429 en todos los intentos → el cliente agota reintentos y devuelve los resultados acumulados, y con `SERPAPI_RATE_LIMIT_RPS` configurado no se exceden las llamadas/s en dos hilos.
-- [ ] **D4. Eliminar la escritura de `respuesta_prueba.json` de `api_searcher.py`** (pendiente 7 de `proximas-tareas.md`) (~15 min)
+- [ ] **D4. Eliminar la escritura de `respuesta_prueba.json` de `buscador_serpapi.py`** (pendiente 7 de `proximas-tareas.md`) (~15 min)
   - **RF:** RF-1 (refactor, sin cambio de comportamiento)
   - **Depende de:** D1
-  - **Hecho cuando:** `grep -rn "respuesta_prueba.json\|escribir_ciudad_pais" src/` no da resultados y `python3 -m pytest test/ -q` queda verde tras adaptar `test_api_searcher.py`.
+  - **Hecho cuando:** `grep -rn "respuesta_prueba.json\|escribir_ciudad_pais" src/` no da resultados y `python3 -m pytest test/ -q` queda verde tras adaptar `test_buscador_serpapi.py`.
 
-## Bloque E — Evaluador Gemini (`src/services/ai_evaluator.py`)
+## Bloque E — Evaluador Gemini (`src/services/evaluador_ia.py`)
 
 - [ ] **E1. Reintentos con backoff exponencial** (timeout, error temporal, 5xx, respuesta inválida) con intentos desde `settings` (~25 min)
   - **RF:** RF-7, RF-9, RF-10
@@ -60,11 +60,11 @@
 - [ ] **E2. Fallo de lote explícito** (`logging`, propagar a la capa superior, sin `print`, sin evaluaciones parciales) (~15 min)
   - **RF:** RF-7
   - **Depende de:** E1
-  - **Hecho cuando:** `grep -n "print(" src/services/ai_evaluator.py` no da resultados y un lote fallido lanza excepción que el orquestador puede detectar antes de persistir.
+  - **Hecho cuando:** `grep -n "print(" src/services/evaluador_ia.py` no da resultados y un lote fallido lanza excepción que el orquestador puede detectar antes de persistir.
 
 ## Bloque F — Orquestador de integración
 
-- [ ] **F1. `src/orchestrator/integracion_orchestrator.py`: búsqueda → persistir hospedajes → evaluación en lote** (~30 min)
+- [ ] **F1. `src/orchestrator/orquestador_integracion.py`: búsqueda → persistir hospedajes → evaluación en lote** (~30 min)
   - **RF:** RF-1, RF-4, RF-5
   - **Depende de:** C1, D3, B2
   - **Hecho cuando:** con mocks de SerpAPI y Gemini, el flujo deja N filas en `hospedajes` con ID real y hace exactamente 1 llamada a Gemini.
@@ -82,7 +82,7 @@
 - [ ] **G1. Fixtures SerpAPI en `test/fixtures/`** (`hospedaje_completo`, `hospedaje_sin_resenas`, `serpapi_rate_limit_429`, `serpapi_paginacion_multiple`, `busqueda_sin_resultados`) (~25 min)
   - **RF:** RF-11
   - **Depende de:** D3
-  - **Hecho cuando:** los 5 JSON cargan con `json.load` y contienen las claves que consumen `api_searcher`.
+  - **Hecho cuando:** los 5 JSON cargan con `json.load` y contienen las claves que consumen `buscador_serpapi`.
 - [ ] **G2. Fixtures Gemini** (`gemini_respuesta_valida`, `gemini_respuesta_invalida`) (~15 min)
   - **RF:** RF-11
   - **Depende de:** B2
@@ -91,19 +91,19 @@
   - **RF:** RF-10
   - **Depende de:** A1
   - **Hecho cuando:** cambiar una variable de entorno en la prueba cambia el valor leído sin tocar código.
-- [ ] **G4. `test/test_api_searcher.py` — búsqueda y límites** (~25 min)
+- [ ] **G4. `test/test_buscador_serpapi.py` — búsqueda y límites** (~25 min)
   - **RF:** RF-1, RF-3
   - **Depende de:** D2, G1
-  - **Hecho cuando:** cubre resultados válidos, ausencia de resultados, corte por `max_pages` y por `max_results`, y `python3 -m pytest test/test_api_searcher.py -q` está verde.
-- [ ] **G5. `test/test_api_searcher.py` — rate limit y reintentos** (~25 min)
+  - **Hecho cuando:** cubre resultados válidos, ausencia de resultados, corte por `max_pages` y por `max_results`, y `python3 -m pytest test/test_buscador_serpapi.py -q` está verde.
+- [ ] **G5. `test/test_buscador_serpapi.py` — rate limit y reintentos** (~25 min)
   - **RF:** RF-2, RF-9
   - **Depende de:** D3, G1
   - **Hecho cuando:** cubre 429 con recuperación, 429 con agotamiento conservando acumulados y límite de RPS, y el archivo está verde.
-- [ ] **G6. `test/test_ai_evaluator.py` — lote y validación** (~25 min)
+- [ ] **G6. `test/test_evaluador_ia.py` — lote y validación** (~25 min)
   - **RF:** RF-5, RF-6
   - **Depende de:** B2, E1, G2
   - **Hecho cuando:** cubre 1 llamada por lote, respuesta válida, respuesta inválida y hospedaje sin reseñas, con el archivo en verde.
-- [ ] **G7. `test/test_ai_evaluator.py` — reintentos y fallo de lote** (~20 min)
+- [ ] **G7. `test/test_evaluador_ia.py` — reintentos y fallo de lote** (~20 min)
   - **RF:** RF-7
   - **Depende de:** E2, G2
   - **Hecho cuando:** cubre agotamiento de reintentos y la no creación de evaluaciones parciales, con el archivo en verde.

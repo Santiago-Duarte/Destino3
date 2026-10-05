@@ -15,7 +15,7 @@ REST → frontend → despliegue); la fase activa integra las APIs externas.
 
 - `src/models/` — modelos de dominio (clases simples; solo `evaluacion_ia.py` usa Pydantic).
 - `src/repositories/` — único lugar con SQL crudo (psycopg2).
-- `src/services/` — APIs externas: `api_searcher.py` (SerpAPI), `ai_evaluator.py` (Gemini).
+- `src/services/` — APIs externas: `buscador_serpapi.py` (SerpAPI), `evaluador_ia.py` (Gemini).
 - `src/orchestrator/` — orquestación del flujo de evaluación.
 - `src/config/` — `settings.py` (parámetros operativos), `database.py` (conexión), `__init__.py` (carga del `.env`).
 - `src/main.py` — vacío: la app aún no tiene punto de entrada.
@@ -32,8 +32,8 @@ REST → frontend → despliegue); la fase activa integra las APIs externas.
 - `docs/constitucion.md` manda sobre cualquier otra fuente.
 - Fase activa: `specs/003-integracion-apis-externas/` → `spec.md` (requisitos), `plan.md` (decisiones), `tasks.md` (qué
   está hecho y qué no).
-- Fuera de esas fuentes no se inventan requisitos (reglas #1 y #2 de más abajo).
-- Las specs citan reglas de este archivo como «AGENTS.md #N»: **mantén la numeración**.
+- Fuera de esas fuentes no se inventan requisitos (constitución #12 y #13).
+- Specs y código citan las reglas como «constitución #N»: **mantén la numeración** de `docs/constitucion.md`.
 - Rutas antiguas que ya no existen y que aún aparecen en documentación: `specs/arquitectura.md`, `specs/reglas.md`,
   `specs/estado.md`, `specs/decisiones/`.
 
@@ -41,18 +41,17 @@ REST → frontend → despliegue); la fase activa integra las APIs externas.
 
 - Instalar dependencias: `python3 -m pip install -r requirements.txt`
 - Tests (todos): `python3 -m pytest test/ -q` (desde la raíz del repo)
-- Test individual: `python3 -m pytest test/test_destinos.py::TestDestinos::test_crear_destino_cuando_no_existe -q`
+- Test individual: `python3 -m pytest test/test_destino_repository.py::TestDestinoRepository::test_crear_destino_cuando_no_existe -q`
 - Ver por qué un test se salta: `python3 -m pytest test/ -q -rs`
 - Lint / formato / typecheck / build: **no existen** en este proyecto; la única verificación es la suite en verde.
 - **pytest no está en `.venv` ni en `requirements.txt`**: usa el `python3` del sistema (3.13), que ya tiene `psycopg2`,
   `dotenv`, `requests`, `google-genai`, `pydantic` y `pytest`. Si falta: `python3 -m pip install pytest`.
-- No hay ejecutable: `src/main.py` está vacío; el bloque `__main__` de `src/services/api_searcher.py` es una prueba
-  manual, no el entry point de la app.
+- No hay ejecutable: `src/main.py` está vacío y la app aún no tiene entry point.
 
 ## Base de datos de pruebas
 
 - `ENVIRONMENT=testing` → `src/config/database.py` conecta a `DB_TEST_NAME`; cualquier otro valor usa `DB_NAME`.
-  `test/__init__.py` y `test/db_test_case.py` fijan `ENVIRONMENT=testing` al importarse.
+  `test/__init__.py` lo fija al importarse, antes de que cualquier módulo de `src.config` lea la variable.
 - Con PostgreSQL apagado **la suite nunca falla**: los tests que heredan de `BaseDBTestCase` se saltan (`SkipTest` si no
   conecta). Todos los `skipped` deben venir de ahí (compruébalo con `-rs`); con el motor encendido no debería haber
   ningún skip.
@@ -65,12 +64,11 @@ REST → frontend → despliegue); la fase activa integra las APIs externas.
 
 ## Arquitectura (lo que no se deduce de los nombres)
 
-- Repositories = único lugar con SQL crudo (psycopg2). Services no ejecutan SQL; repositories no importan services.
-  `services → repositories` sí está permitido (`api_searcher` lo hace).
-- Los modelos de dominio en `src/models/*.py` son clases simples; **solo** `src/models/evaluacion_ia.py` usa Pydantic
-  (valida la respuesta de Gemini).
-- `id_temporal` existe solo en memoria durante la evaluación IA: nunca persistirlo. Los IDs reales los genera
-  PostgreSQL.
+- Repositories = único lugar con SQL crudo y services no ejecutan SQL (constitución #3); `services → repositories` sí
+  está permitido (`buscador_serpapi` lo hace).
+- Los repositories **propagan** cualquier error de SQL y `_transaccion` revierte; la capa superior es la que decide
+  qué responder (constitución #6).
+- `id_temporal` solo vive en memoria durante la evaluación IA (constitución #4); los IDs reales los genera PostgreSQL.
 - La config operativa (timeouts, reintentos, rate limit, claves) vive en `src/config/settings.py` y se lee **al
   importar**: para probar cambios de variables de entorno hay que recargar el módulo (lo hace
   `test/test_config_settings.py`).
@@ -95,27 +93,14 @@ REST → frontend → despliegue); la fase activa integra las APIs externas.
   `respuesta_prueba.json`), desactivar tests para que pasen, apuntar los tests a una BD real.
 - Si algo es ambiguo o contradice la spec, detente y pregunta en lugar de suponer.
 
-### Reglas que las specs citan como «AGENTS.md #N»
+### Reglas permanentes
 
-Mantén esta numeración: `specs/003-*/plan.md` las referencia por número.
-
-1. Las specs son la fuente de verdad; no cambies una decisión documentada sin actualizar la spec o el ADR.
-2. No inventes requisitos fuera del roadmap o de una spec existente.
-3. Repository Pattern: repositories = único SQL, services no ejecutan SQL, repositories no importan services.
-4. Separa responsabilidades por capas; no muevas lógica de una a otra para acelerar.
-5. SerpAPI y Gemini encapsulados en services; la lógica interna no depende de detalles del proveedor.
-6. Gemini: entrada/salida estructurada y validada con Pydantic antes de usarla.
-7. Solo PostgreSQL genera IDs persistentes; `id_temporal` nunca se persiste.
-8. Persistencia con modelos propios del dominio, no con modelos del proveedor.
-9. Tests en `unittest` (+ mocks de APIs externas; BD de pruebas para integración). Pytest es solo el runner: no
-   introduces `conftest.py` ni fixtures de pytest.
-10. Errores explícitos: no los ocultes con `print()`/`None`; propaga y que la capa superior decida.
-11. Cambios de capas, BD, flujo principal o integración externa: revisa specs/ADRs antes de implementar.
-12. Si la implementación cambia una decisión o el estado de una fase, actualiza la documentación.
+Las reglas viven en `docs/constitucion.md` con numeración canónica (#1–#15): léelas antes de tocar código y
+cítalas como **«constitución #N»**. Aquí no se copian para no duplicarlas.
 
 ## Al terminar cualquier tarea
 
 - Ejecuta `python3 -m pytest test/ -q` y confirma que queda en verde (no hay lint que ejecutar).
 - Comprueba que el cambio cumple la spec activa y la constitución; si cambia una decisión o el estado de una fase,
-  actualiza la documentación (#12).
+  actualiza la documentación (constitución #11).
 - Resume qué cambiaste, qué archivos tocaste y qué queda pendiente.
