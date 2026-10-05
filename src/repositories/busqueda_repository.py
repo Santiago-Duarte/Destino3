@@ -1,29 +1,14 @@
-import logging
-from typing import Optional
-from src.repositories.base_repository import BaseRepository
 from src.models.busqueda import Busqueda
-
-logger = logging.getLogger(__name__)
+from src.repositories.base_repository import BaseRepository
 
 
 class BusquedaRepository(BaseRepository):
 
-    def guardar(self, busqueda: Busqueda) -> Optional[int]:
-        """Inserta una búsqueda con sus criterios de zona, presupuesto y fechas.
-
-        Returns:
-            El id generado, o ``None`` si el ``INSERT`` falla (la transacción
-            se revierte).
-        """
-        conexion = self._obtener_conexion()
-        cursor = conexion.cursor()
-
-        try:
-            query = """INSERT INTO busquedas (usuario_id, destino_id, zona, presupuesto, fecha_inicio, fecha_fin) 
-                       VALUES (%s, %s, %s, %s, %s, %s) RETURNING id;"""
-
+    def guardar(self, busqueda: Busqueda) -> int:
+        with self._transaccion() as cursor:
             cursor.execute(
-                query,
+                """INSERT INTO busquedas (usuario_id, destino_id, zona, presupuesto, fecha_inicio, fecha_fin)
+                   VALUES (%s, %s, %s, %s, %s, %s) RETURNING id;""",
                 (busqueda.usuario_id,
                  busqueda.destino_id,
                  busqueda.zona,
@@ -31,14 +16,4 @@ class BusquedaRepository(BaseRepository):
                  busqueda.fecha_inicio,
                  busqueda.fecha_fin)
             )
-
-            busqueda_id = cursor.fetchone()[0]
-            conexion.commit()
-            return busqueda_id
-        except Exception as error:
-            conexion.rollback()
-            logger.error(f"Error al guardar la busqueda: {error}")
-            return None
-        finally:
-            cursor.close()
-            conexion.close()
+            return cursor.fetchone()[0]
