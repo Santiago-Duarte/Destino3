@@ -1,34 +1,36 @@
 import logging
-from src.services.ai_evaluator import AIEvaluator, convertir_a_evaluacion
-from src.repositories.evaluacion_ia_repository import EvaluacionesRepository
-from src.repositories.recomendacion_repository import RecomendacionRepository
+
 from src.models.evaluacion import Evaluacion
-from src.models.evaluacion_ia import LoteEvaluacionesIA
+from src.models.evaluacion_ia import EvaluacionIAOutput, LoteEvaluacionesIA
 from src.models.hospedaje import Hospedaje
-from src.models.recomendaciones import Recomendaciones
+from src.models.recomendacion import Recomendacion
+from src.repositories.evaluacion_ia_repository import EvaluacionIARepository
+from src.repositories.recomendacion_repository import RecomendacionRepository
+from src.services.evaluador_ia import EvaluadorIA
 
 logger = logging.getLogger(__name__)
 
 
-class EvaluacionOrchestrator:
+class OrquestadorEvaluacion:
 
     def __init__(self) -> None:
-        self.evaluador = AIEvaluator()
-        self.evaluaciones_repo = EvaluacionesRepository()
+        self.evaluador = EvaluadorIA()
+        self.evaluaciones_repo = EvaluacionIARepository()
         self.recomendaciones_repo = RecomendacionRepository()
 
-    def ejecutar(
+    def evaluar_y_persistir(
             self,
             hospedajes: list[Hospedaje],
             busqueda_id: int,
             presupuesto_max: float,
             preferencias: str,
     ) -> list[Evaluacion]:
-        """Coordina la evaluación con IA y la persistencia de resultados.
+        """Evalúa los candidatos con IA y persiste evaluaciones y recomendaciones.
 
-        Para cada uno de los 3 hospedajes elegidos por el modelo, descarta los
-        id_temporales huérfanos, guarda la evaluación asociándola al hospedaje
-        real y, al final, persiste las recomendaciones ordenadas por posición.
+        Descarta los ``id_temporal`` huérfanos que la IA devuelva sin hospedaje
+        asociado, guarda las evaluaciones de los 3 elegidos en una única
+        transacción y, después, persiste las recomendaciones ordenadas por
+        posición. Si la IA no devuelve nada utilizable no se escribe nada.
 
         Args:
             hospedajes: Candidatos a evaluar.
@@ -37,66 +39,49 @@ class EvaluacionOrchestrator:
             preferencias: Criterios adicionales del usuario.
 
         Returns:
-            Las evaluaciones guardadas en base de datos; vacía si el evaluador
-            no devuelve resultado o ninguna evaluación se persiste correctamente.
+            Las evaluaciones guardadas en base de datos, con su id asignado.
         """
-        resultado = self.evaluador.evaluar_hospedaje(hospedajes, presupuesto_max, preferencias)
+        resultado = self.evaluador.evaluar_lote(hospedajes, presupuesto_max, preferencias)
 
         if resultado is None:
             logger.warning("No se pudo evaluar los hospedajes")
             return []
 
-        respuesta, mapping = resultado
-        evaluaciones_guardadas = []
+        respuesta, hospedajes_por_id_temporal = resultado
+        candidatos = self._candidatos_elegidos(respuesta, hospedajes_por_id_temporal)
 
-        for evaluacion_ia in respuesta.evaluaciones:
-            hospedaje_real = mapping.get(evaluacion_ia.id_temporal)
+        evaluaciones = [
+            Evaluacion.desde_ia(evaluacion_ia, hospedaje.id)
+            for evaluacion_ia, hospedaje in candidatos
+        ]
+        for evaluacion, id_generado in zip(evaluaciones, self.evaluaciones_repo.guardar_lote(evaluaciones)):
+            evaluacion.id = id_generado
 
-            if hospedaje_real is None:
-                logger.warning(f"id_temporal {evaluacion_ia.id_temporal} no encontrado en mapping, descartando")
-                continue
-
-            evaluacion = convertir_a_evaluacion(evaluacion_ia, hospedaje_real.id)
-            evaluacion_id = self.evaluaciones_repo.guardar(evaluacion)
-
-            if evaluacion_id is not None:
-                evaluacion.id = evaluacion_id
-                evaluaciones_guardadas.append(evaluacion)
-
-        self._guardar_recomendaciones(respuesta, busqueda_id, mapping)
-
-        return evaluaciones_guardadas
-
-    def _guardar_recomendaciones(
-            self,
-            respuesta: LoteEvaluacionesIA,
-            busqueda_id: int,
-            mapping: dict[int, Hospedaje],
-    ) -> None:
-        """Persiste las recomendaciones del top 3 en una sola operación atómica.
-
-        Args:
-            respuesta: Top 3 devuelto por el modelo, en orden de preferencia.
-            busqueda_id: Búsqueda propietaria de las recomendaciones.
-            mapping: Correspondencia entre ``id_temporal`` y hospedaje real.
-        """
-        recomendaciones = []
-
-        for posicion, evaluacion_ia in enumerate(respuesta.evaluaciones, start=1):
-            hospedaje_real = mapping.get(evaluacion_ia.id_temporal)
-
-            if hospedaje_real is None:
-                continue
-
-            recomendacion = Recomendaciones(
+        recomendaciones = [
+            Recomendacion(
                 id=None,
                 busqueda_id=busqueda_id,
-                hospedaje_id=hospedaje_real.id,
+                hospedaje_id=hospedaje.id,
                 posicion=posicion,
             )
-            recomendaciones.append(recomendacion)
-
+            for posicion, (_, hospedaje) in enumerate(candidatos, start=1)
+        ]
         if recomendaciones:
-            exito = self.recomendaciones_repo.guardar_varias(recomendaciones, busqueda_id)
-            if not exito:
-                logger.error("Error al guardar las recomendaciones")
+            self.recomendaciones_repo.guardar_lote(recomendaciones)
+
+        return evaluaciones
+
+    @staticmethod
+    def _candidatos_elegidos(
+            respuesta: LoteEvaluacionesIA,
+            hospedajes_por_id_temporal: dict[int, Hospedaje],
+    ) -> list[tuple[EvaluacionIAOutput, Hospedaje]]:
+        """Descarta los ``id_temporal`` sin hospedaje y devuelve los pares en el orden de la IA."""
+        candidatos = []
+        for evaluacion_ia in respuesta.evaluaciones:
+            hospedaje = hospedajes_por_id_temporal.get(evaluacion_ia.id_temporal)
+            if hospedaje is None:
+                logger.warning("id_temporal %s sin hospedaje asociado, descartando", evaluacion_ia.id_temporal)
+                continue
+            candidatos.append((evaluacion_ia, hospedaje))
+        return candidatos

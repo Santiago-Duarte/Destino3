@@ -1,13 +1,24 @@
-import os, requests, json
-from urllib.parse import quote
+import json
+import logging
 from datetime import datetime, timedelta
 from pathlib import Path
-# env se carga centralizado en src/config/__init__.py (importado transitivamente via repositories)
-from src.repositories.destino_repository import DestinoRepository
+from urllib.parse import quote
+
+import requests
+
+from src.config import settings
 from src.models.destino import Destino
 from src.models.hospedaje import Hospedaje
+from src.repositories.destino_repository import DestinoRepository
 
+logger = logging.getLogger(__name__)
+
+URL_SERPAPI = "https://serpapi.com/search.json"
 RUTA_RESPUESTA_PRUEBA = Path(__file__).resolve().parents[2] / "respuesta_prueba.json"
+
+
+def _texto_de_busqueda(ciudad: str, pais: str) -> str:
+    return f"hoteles en {ciudad} {pais}"
 
 
 def construir_link_google_hotels(property_token: str, fecha_inicio: str, fecha_fin: str, query: str) -> str:
@@ -18,7 +29,7 @@ def construir_link_google_hotels(property_token: str, fecha_inicio: str, fecha_f
     )
 
 
-def buscar_hospedajes_raw(ciudad: str, pais: str, presupuesto_maximo: float | None = None) -> dict | None:
+def consultar_serpapi(ciudad: str, pais: str, presupuesto_maximo: float | None = None) -> dict | None:
     """Consulta la API de Google Hotels vía SerpAPI y devuelve la respuesta sin procesar.
 
     Fija de forma automática una estancia de dos noches a partir de una semana
@@ -34,39 +45,36 @@ def buscar_hospedajes_raw(ciudad: str, pais: str, presupuesto_maximo: float | No
         El JSON de la respuesta de SerpAPI, o ``None`` si falta la clave
         ``SERPAPI_KEY``, la petición falla o la API devuelve un error.
     """
-
-    api_key = os.getenv("SERPAPI_KEY")
-    if api_key is None:
-        print("No se encontro la clave de la API")
+    if not settings.SERPAPI_KEY:
+        logger.error("Falta la clave de la API (SERPAPI_KEY)")
         return None
 
-    fecha_inicio = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
-    fecha_fin = (datetime.now() + timedelta(days=9)).strftime("%Y-%m-%d")
+    check_in = datetime.now() + timedelta(days=7)
+    check_out = check_in + timedelta(days=2)
 
-    url = "https://serpapi.com/search.json"
     params = {
         "engine": "google_hotels",
-        "q": f"hoteles en {ciudad} {pais}",
-        "check_in_date": fecha_inicio,
-        "check_out_date": fecha_fin,
+        "q": _texto_de_busqueda(ciudad, pais),
+        "check_in_date": check_in.strftime("%Y-%m-%d"),
+        "check_out_date": check_out.strftime("%Y-%m-%d"),
         "currency": "USD",
         "hl": "es",
-        "api_key": api_key,
+        "api_key": settings.SERPAPI_KEY,
     }
 
     if presupuesto_maximo is not None:
         params["max_price"] = presupuesto_maximo
 
     try:
-        response = requests.get(url, params=params, timeout=15)
+        response = requests.get(URL_SERPAPI, params=params, timeout=settings.SERPAPI_TIMEOUT)
         response.raise_for_status()
         resultado = response.json()
     except requests.exceptions.RequestException as e:
-        print(f"Error al buscar hospedajes: {e}")
+        logger.error("Error al buscar hospedajes: %s", e)
         return None
 
     if "error" in resultado:
-        print(f"Error de la API: {resultado['error']}")
+        logger.error("Error de la API: %s", resultado["error"])
         return None
 
     return resultado
@@ -88,81 +96,64 @@ def buscar_hospedajes(ciudad: str, pais: str, presupuesto_maximo: float | None =
         La lista de hospedajes mapeados; vacía si la API falla, no hay
         resultados o no se puede obtener o crear el destino.
     """
-    resultado = buscar_hospedajes_raw(ciudad, pais, presupuesto_maximo)
+    resultado = consultar_serpapi(ciudad, pais, presupuesto_maximo)
 
     if not resultado or "properties" not in resultado:
         return []
 
-    destino = Destino(ciudad=ciudad, pais=pais)
-
-    destino_repo = DestinoRepository()
-    id_destino = destino_repo.obtener_o_crear(destino)
-
-    if id_destino is None:
-        print("No se pudo obtener o crear el destino")
+    try:
+        id_destino = DestinoRepository().obtener_o_crear(Destino(ciudad=ciudad, pais=pais))
+    except Exception as error:
+        logger.error("No se pudo obtener o crear el destino: %s", error)
         return []
 
-    escribir_ciudad_pais(resultado, ciudad, pais)
+    guardar_respuesta_prueba(resultado, ciudad, pais)
 
-    hospedajes = []
+    return mapear_propiedades_en_hospedajes(resultado, id_destino, presupuesto_maximo, ciudad, pais)
 
-    parametros_busqueda = resultado.get("search_parameters", {})
-    fecha_inicio = parametros_busqueda.get("check_in_date")
-    fecha_fin = parametros_busqueda.get("check_out_date")
 
-    lista_hospedajes = crear_lista_hospedajes(
-        resultado,
-        id_destino,
-        fecha_inicio,
-        fecha_fin,
-        presupuesto_maximo,
-        ciudad,
-        pais,
-        hospedajes
-    )
-
-    return lista_hospedajes
-
-def escribir_ciudad_pais(resultado: dict, ciudad: str, pais: str) -> None:
+def guardar_respuesta_prueba(resultado: dict, ciudad: str, pais: str) -> None:
     datos = resultado.copy()
     datos['city'] = ciudad
     datos['country'] = pais
 
     with open(RUTA_RESPUESTA_PRUEBA, "w", encoding="utf-8") as f:
         json.dump(datos, f, ensure_ascii=False, indent=4)
-    print("Respuesta guardad en respuesta_prueba.json")
+    logger.info("Respuesta guardada en respuesta_prueba.json")
 
 
-def crear_lista_hospedajes(
+def mapear_propiedades_en_hospedajes(
         resultado: dict,
         id_destino: int,
-        fecha_inicio: str,
-        fecha_fin: str,
         presupuesto_maximo: float | None,
         ciudad: str,
         pais: str,
-        hospedajes: list[Hospedaje]
 ) -> list[Hospedaje]:
     """Convierte las ``properties`` de la respuesta de SerpAPI en objetos ``Hospedaje``.
 
-    Descarta los lugares sin precio o por encima del presupuesto y construye la
-    URL de reserva a partir del ``property_token`` cuando hay fechas de estancia;
-    si no, usa el enlace genérico reportado por la API.
+    Si se indica presupuesto, descarta los lugares sin precio o por encima del
+    límite; sin presupuesto, conserva también los que no traen precio. Construye
+    la URL de reserva a partir del ``property_token`` cuando la respuesta trae
+    fechas de estancia; si no, usa el enlace genérico reportado por la API.
 
     Args:
-        resultado: Respuesta cruda de SerpAPI con la clave ``properties``.
+        resultado: Respuesta cruda de SerpAPI con las claves ``properties`` y
+            ``search_parameters`` (de ahí toma las fechas de la estancia).
         id_destino: Identificador del destino ya persistido en base de datos.
-        fecha_inicio: Fecha de check-in en formato ``YYYY-MM-DD``.
-        fecha_fin: Fecha de check-out en formato ``YYYY-MM-DD``.
         presupuesto_maximo: Precio por noche máximo en USD; si es ``None``
             no se filtra por precio.
         ciudad: Ciudad usada para armar el enlace de reserva.
         pais: País usado para armar el enlace de reserva.
-        hospedajes: Lista que se incrementa en sitio con cada hospedaje válido.
 
     Returns:
-        La misma lista ``hospedajes`` recibida, con los hospedajes añadidos.
+        Los hospedajes mapeados, en el mismo orden que la respuesta.
     """
+    parametros_busqueda = resultado.get("search_parameters", {})
+    fecha_inicio = parametros_busqueda.get("check_in_date")
+    fecha_fin = parametros_busqueda.get("check_out_date")
+    texto_busqueda = _texto_de_busqueda(ciudad, pais)
+
+    hospedajes = []
     for lugar in resultado["properties"]:
         rate_info = lugar.get("rate_per_night", {})
         precio = rate_info.get("extracted_lowest")
@@ -172,12 +163,7 @@ def crear_lista_hospedajes(
 
         property_token = lugar.get("property_token")
         if property_token and fecha_inicio and fecha_fin:
-            url_reserva = construir_link_google_hotels(
-                property_token,
-                fecha_inicio,
-                fecha_fin,
-                f"hoteles en {ciudad} {pais}"
-            )
+            url_reserva = construir_link_google_hotels(property_token, fecha_inicio, fecha_fin, texto_busqueda)
         else:
             url_reserva = lugar.get("link", "")
 
@@ -193,21 +179,3 @@ def crear_lista_hospedajes(
         hospedajes.append(hospedaje)
 
     return hospedajes
-
-
-if __name__ == "__main__":
-    archivo_mock = RUTA_RESPUESTA_PRUEBA
-
-    # Si ya tenemos la respuesta guardada, la leemos para no consumir créditos
-    if os.path.exists(archivo_mock):
-        with open(archivo_mock, "r", encoding="utf-8") as f:
-            datos = json.load(f)
-
-        hotel_ejemplo = datos["properties"][0]
-        print("Objeto rate_per_night completo:")
-        print(hotel_ejemplo.get("rate_per_night"))
-    else:
-        # Si no existe, ejecutamos la búsqueda para generar el archivo por primera vez
-        print("No se encontró archivo local. Realizando petición a SerpAPI...")
-        lista_hospedajes = buscar_hospedajes("Cartagena", "Colombia")
-        print(f"Se mapearon {len(lista_hospedajes)} hospedajes.")

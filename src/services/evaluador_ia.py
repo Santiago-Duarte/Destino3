@@ -1,24 +1,17 @@
-import os
 import json
+import logging
 
 from google import genai
 from google.genai import types
+
+from src.config import settings
+from src.models.evaluacion_ia import LoteEvaluacionesIA
 from src.models.hospedaje import Hospedaje
-from src.models.evaluacion import Evaluacion
-from src.models.evaluacion_ia import EvaluacionIAOutput, LoteEvaluacionesIA
+
+logger = logging.getLogger(__name__)
 
 
-def convertir_a_evaluacion(dto: EvaluacionIAOutput, hospedaje_id: int) -> Evaluacion:
-    return Evaluacion(
-        resumen_ejecutivo=dto.resumen_ejecutivo,
-        puntos_fuertes=dto.puntos_fuertes,
-        puntos_debiles=dto.puntos_debiles,
-        score_calidad_precio=dto.score_calidad_precio,
-        hospedaje_id=hospedaje_id,
-    )
-
-
-def seleccionar_candidatos(s: list[Hospedaje], presupuesto_max: float) -> list[Hospedaje]:
+def seleccionar_candidatos(hospedajes: list[Hospedaje], presupuesto_max: float) -> list[Hospedaje]:
     """Preselecciona los hospedajes que pasarán a la evaluación del modelo.
 
     Filtra los que exceden el presupuesto o no tienen precio y luego ordena por
@@ -26,34 +19,49 @@ def seleccionar_candidatos(s: list[Hospedaje], presupuesto_max: float) -> list[H
     quedándose con los 5 primeros.
 
     Args:
-        s: Hospedajes disponibles obtenidos de la búsqueda.
+        hospedajes: Hospedajes disponibles obtenidos de la búsqueda.
         presupuesto_max: Precio por noche máximo en USD.
 
     Returns:
         Hasta 5 hospedajes ordenados de mejor a peor relación calidad-precio;
         vacía si ninguno cumple el presupuesto.
     """
-    candidatos_validos = [
-        h for h in s
+    dentro_de_presupuesto = [
+        h for h in hospedajes
         if h.precio_noche is not None and h.precio_noche <= presupuesto_max
     ]
-    candidatos_ordenados = sorted(
-        candidatos_validos,
+
+    return sorted(
+        dentro_de_presupuesto,
         key=lambda h: (-(h.calificacion or 0), h.precio_noche)
     )[:5]
 
-    return candidatos_ordenados
+
+def _construir_prompt(resumen_candidatos: list[dict], presupuesto_max: float, preferencias: str) -> str:
+    return f"""
+                Eres un asistente experto en viajes. Revisa la siguiente lista de hospedajes en formato JSON:
+                {json.dumps(resumen_candidatos, ensure_ascii=False, indent=4)}
+
+                Criterios del usuario:
+                - Presupuesto máximo por noche: USD ${presupuesto_max}
+                - Preferencias adicionales: {preferencias if preferencias else "Ninguna especificada"}
+
+                Instrucciones:
+                1. Selecciona las **3 mejores opciones** de hospedaje de la lista que cumplan con el presupuesto.
+                2. Para cada opción, utiliza el `id_temporal` exacto del JSON para mantener la relación.
+                3. Proporciona para cada una: un resumen ejecutivo, puntos fuertes, puntos débiles y un `score_calidad_precio` del 1 al 10.
+                4. Usa únicamente las URLs de reserva provistas en los datos de entrada, sin inventar ni modificar enlaces.
+                """
 
 
-class AIEvaluator:
+class EvaluadorIA:
 
     def __init__(self) -> None:
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
+        if not settings.GEMINI_API_KEY:
             raise ValueError("GEMINI_API_KEY no está definida")
-        self.client = genai.Client(api_key=api_key)
+        self._cliente = genai.Client(api_key=settings.GEMINI_API_KEY)
 
-    def evaluar_hospedaje(
+    def evaluar_lote(
             self,
             hospedajes: list[Hospedaje],
             presupuesto_max: float,
@@ -71,26 +79,23 @@ class AIEvaluator:
             preferencias: Criterios adicionales del usuario (vista, parqueadero, etc.).
 
         Returns:
-            Una tupla ``(respuesta_ia, mapping)`` donde ``respuesta_ia`` contiene
-            el top 3 y ``mapping`` traduce cada ``id_temporal`` a su hospedaje
-            original, o ``None`` si no hay candidatos o Gemini falla.
-
-        Raises:
-            ValueError: Si la variable de entorno ``GEMINI_API_KEY`` no está definida.
+            Una tupla ``(respuesta_ia, hospedajes_por_id_temporal)`` donde
+            ``respuesta_ia`` contiene el top 3 y el segundo elemento traduce
+            cada ``id_temporal`` a su hospedaje original, o ``None`` si no hay
+            candidatos o Gemini falla.
         """
+        candidatos = seleccionar_candidatos(hospedajes, presupuesto_max)
 
-        mejores = seleccionar_candidatos(hospedajes, presupuesto_max)
-
-        if not mejores:
-            print("No se encontraron hospedajes dentro del presupuesto.")
+        if not candidatos:
+            logger.warning("No se encontraron hospedajes dentro del presupuesto.")
             return None
 
-        mapping = {}
-        lista_resumida = []
-        for i, hospedaje in enumerate(mejores, start=1):
-            mapping[i] = hospedaje
-            lista_resumida.append({
-                "id_temporal": i,
+        hospedajes_por_id_temporal = {}
+        resumen_candidatos = []
+        for id_temporal, hospedaje in enumerate(candidatos, start=1):
+            hospedajes_por_id_temporal[id_temporal] = hospedaje
+            resumen_candidatos.append({
+                "id_temporal": id_temporal,
                 "nombre": hospedaje.nombre,
                 "precio_noche": hospedaje.precio_noche,
                 "calificacion": hospedaje.calificacion,
@@ -98,34 +103,19 @@ class AIEvaluator:
                 "url_reserva": hospedaje.url_reserva
             })
 
-        prompt = f"""
-                Eres un asistente experto en viajes. Revisa la siguiente lista de hospedajes en formato JSON:
-                {json.dumps(lista_resumida, ensure_ascii=False, indent=4)}
-
-                Criterios del usuario:
-                - Presupuesto máximo por noche: USD ${presupuesto_max}
-                - Preferencias adicionales: {preferencias if preferencias else "Ninguna especificada"}
-
-                Instrucciones:
-                1. Selecciona las **3 mejores opciones** de hospedaje de la lista que cumplan con el presupuesto.
-                2. Para cada opción, utiliza el `id_temporal` exacto del JSON para mantener la relación.
-                3. Proporciona para cada una: un resumen ejecutivo, puntos fuertes, puntos débiles y un `score_calidad_precio` del 1 al 10.
-                4. Usa únicamente las URLs de reserva provistas en los datos de entrada, sin inventar ni modificar enlaces.
-                """
+        prompt = _construir_prompt(resumen_candidatos, presupuesto_max, preferencias)
 
         try:
-            response = self.client.models.generate_content(
+            response = self._cliente.models.generate_content(
                 model="gemini-3.6-flash",
                 contents=prompt,
-                config = types.GenerateContentConfig(
+                config=types.GenerateContentConfig(
                     response_mime_type="application/json",
                     response_schema=LoteEvaluacionesIA,
                 ),
             )
             respuesta = LoteEvaluacionesIA.model_validate_json(response.text)
-            return respuesta, mapping
+            return respuesta, hospedajes_por_id_temporal
         except Exception as e:
-            print(f"Error al evaluar hospedaje: {e}")
+            logger.error("Error al evaluar el lote de hospedajes: %s", e)
             return None
-
-
