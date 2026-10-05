@@ -1,6 +1,7 @@
 import importlib
 import os
 import unittest
+from pathlib import Path
 
 from src.config import settings
 
@@ -79,7 +80,7 @@ class TestSettings(unittest.TestCase):
         self.assertEqual(settings.GEMINI_API_KEY, "clave-gemini")
 
     def test_los_parametros_no_estan_hardcodeados_en_el_codigo(self):
-        fuente = open(settings.__file__, encoding="utf-8").read()
+        fuente = Path(settings.__file__).read_text(encoding="utf-8")
 
         self.assertIn("os.getenv", fuente)
         self.assertNotIn("print(", fuente)

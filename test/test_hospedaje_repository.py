@@ -1,17 +1,12 @@
-import os
-os.environ['ENVIRONMENT'] = 'testing'
-
 import unittest
 
 import psycopg2
 
+from src.models.hospedaje import Hospedaje
 from test.db_test_case import BaseDBTestCase
 
-from src.models.hospedaje import Hospedaje
-from src.repositories.hospedaje_repository import HospedajeRepository
 
-
-class TestHospedajes(BaseDBTestCase):
+class TestHospedajeRepository(BaseDBTestCase):
 
     def test_guardar_y_obtener_hospedaje(self):
         destino_id = self.crear_destino()
@@ -46,7 +41,7 @@ class TestHospedajes(BaseDBTestCase):
         self.assertEqual(len(hospedajes), 1)
         self.assertEqual(hospedajes[0].nombre, "Hotel 1")
 
-    def test_guardar_varios_con_campos_opcionales_nulos(self):
+    def test_guardar_lote_con_campos_opcionales_nulos(self):
         destino_id = self.crear_destino()
         hospedaje = Hospedaje(
             nombre="Hostal",
@@ -58,7 +53,7 @@ class TestHospedajes(BaseDBTestCase):
             destino_id=destino_id,
         )
 
-        ids = self.hospedaje_repo.guardar_varios([hospedaje])
+        ids = self.hospedaje_repo.guardar_lote([hospedaje])
 
         self.assertIsInstance(ids[0], int)
         hospedajes = self.hospedaje_repo.obtener_por_destino(destino_id)
@@ -70,7 +65,7 @@ class TestHospedajes(BaseDBTestCase):
         self.assertIsNone(hospedajes[0].direccion)
         self.assertIsNone(hospedajes[0].url_reserva)
 
-    def test_guardar_varios_con_destino_inexistente_lanza_error(self):
+    def test_guardar_lote_con_destino_inexistente_lanza_error(self):
         destino_id = self.crear_destino()
         hospedaje = Hospedaje(
             nombre="Hotel 1",
@@ -83,11 +78,11 @@ class TestHospedajes(BaseDBTestCase):
         )
 
         with self.assertRaises(psycopg2.IntegrityError):
-            self.hospedaje_repo.guardar_varios([hospedaje])
+            self.hospedaje_repo.guardar_lote([hospedaje])
 
         self.assertEqual(self.hospedaje_repo.obtener_por_destino(destino_id), [])
 
-    def test_guardar_varios_sin_destino_lanza_error(self):
+    def test_guardar_lote_sin_destino_lanza_error(self):
         hospedaje = Hospedaje(
             nombre="Hotel 1",
             tipo="hotel",
@@ -99,7 +94,7 @@ class TestHospedajes(BaseDBTestCase):
         )
 
         with self.assertRaises(psycopg2.IntegrityError):
-            self.hospedaje_repo.guardar_varios([hospedaje])
+            self.hospedaje_repo.guardar_lote([hospedaje])
 
         self.assertEqual(self.destino_repo.obtener_todos(), [])
         with self.conexion.cursor() as cursor:
@@ -111,7 +106,7 @@ class TestHospedajes(BaseDBTestCase):
         self.assertFalse(hasattr(self.hospedaje_repo, "guardar"))
 
 
-class TestGuardarVariosHospedajes(BaseDBTestCase):
+class TestGuardarLoteHospedajes(BaseDBTestCase):
     """RF-4: el lote de hospedajes se persiste en una única transacción."""
 
     def _crear_lote(self, destino_id, cantidad=3):
@@ -133,10 +128,10 @@ class TestGuardarVariosHospedajes(BaseDBTestCase):
             cursor.execute("SELECT COUNT(*) FROM hospedajes;")
             return cursor.fetchone()[0]
 
-    def test_guardar_varios_devuelve_tres_ids_enteros(self):
+    def test_guardar_lote_devuelve_tres_ids_enteros(self):
         destino_id = self.crear_destino()
 
-        ids = self.hospedaje_repo.guardar_varios(self._crear_lote(destino_id))
+        ids = self.hospedaje_repo.guardar_lote(self._crear_lote(destino_id))
 
         self.assertEqual(len(ids), 3)
         for id_generado in ids:
@@ -149,7 +144,7 @@ class TestGuardarVariosHospedajes(BaseDBTestCase):
         lote.append(self._crear_lote(999999, cantidad=1)[0])
 
         with self.assertRaises(psycopg2.IntegrityError):
-            self.hospedaje_repo.guardar_varios(lote)
+            self.hospedaje_repo.guardar_lote(lote)
 
         self.assertEqual(self._contar_hospedajes(), 0)
 

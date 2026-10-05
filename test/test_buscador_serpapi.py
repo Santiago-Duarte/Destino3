@@ -1,20 +1,18 @@
+import json
 import os
-os.environ['ENVIRONMENT'] = 'testing'
-
 import tempfile
 import unittest
 from unittest.mock import patch
 
-from src.services.api_searcher import (
-    buscar_hospedajes,
-    buscar_hospedajes_raw,
-    construir_link_google_hotels,
-)
-
-from test.db_test_case import BaseDBTestCase
+import requests
 
 from src.repositories.hospedaje_repository import HospedajeRepository
-from src.repositories.destino_repository import DestinoRepository
+from src.services.buscador_serpapi import (
+    buscar_hospedajes,
+    consultar_serpapi,
+    construir_link_google_hotels,
+)
+from test.db_test_case import BaseDBTestCase
 
 
 def respuesta_mock():
@@ -64,18 +62,18 @@ class TestBuscarHospedajes(unittest.TestCase):
     def setUp(self):
         self.archivo_temporal = tempfile.NamedTemporaryFile(suffix=".json", delete=False)
         self.archivo_temporal.close()
-        patcher_ruta = patch("src.services.api_searcher.RUTA_RESPUESTA_PRUEBA",
+        patcher_ruta = patch("src.services.buscador_serpapi.RUTA_RESPUESTA_PRUEBA",
                              self.archivo_temporal.name)
         patcher_ruta.start()
         self.addCleanup(patcher_ruta.stop)
         self.addCleanup(os.unlink, self.archivo_temporal.name)
 
-        patcher_destino = patch("src.services.api_searcher.DestinoRepository.obtener_o_crear",
+        patcher_destino = patch("src.services.buscador_serpapi.DestinoRepository.obtener_o_crear",
                                 return_value=42)
         patcher_destino.start()
         self.addCleanup(patcher_destino.stop)
 
-    @patch("src.services.api_searcher.buscar_hospedajes_raw")
+    @patch("src.services.buscador_serpapi.consultar_serpapi")
     def test_usar_link_de_entidad_con_fechas_de_search_parameters(self, raw_mock):
         raw_mock.return_value = respuesta_mock()
 
@@ -87,7 +85,7 @@ class TestBuscarHospedajes(unittest.TestCase):
         self.assertIn("check_in=2026-08-14", hospedajes[0].url_reserva)
         self.assertIn("check_out=2026-08-16", hospedajes[0].url_reserva)
 
-    @patch("src.services.api_searcher.buscar_hospedajes_raw")
+    @patch("src.services.buscador_serpapi.consultar_serpapi")
     def test_fallback_al_sitio_del_hotel_sin_property_token(self, raw_mock):
         raw_mock.return_value = respuesta_mock()
 
@@ -95,7 +93,7 @@ class TestBuscarHospedajes(unittest.TestCase):
 
         self.assertEqual(hospedajes[1].url_reserva, "https://hotelb.com")
 
-    @patch("src.services.api_searcher.buscar_hospedajes_raw")
+    @patch("src.services.buscador_serpapi.consultar_serpapi")
     def test_filtra_por_presupuesto(self, raw_mock):
         raw_mock.return_value = respuesta_mock()
 
@@ -104,7 +102,7 @@ class TestBuscarHospedajes(unittest.TestCase):
         self.assertEqual(len(hospedajes), 1)
         self.assertEqual(hospedajes[0].nombre, "Hotel A")
 
-    @patch("src.services.api_searcher.buscar_hospedajes_raw")
+    @patch("src.services.buscador_serpapi.consultar_serpapi")
     def test_sin_properties_devuelve_lista_vacia(self, raw_mock):
         raw_mock.return_value = {"search_parameters": {}}
 
@@ -114,7 +112,7 @@ class TestBuscarHospedajes(unittest.TestCase):
         # Tampoco debe escribir archivo ni mapear hospedajes
         raw_mock.assert_called_once_with("Medellin", "Colombia", None)
 
-    @patch("src.services.api_searcher.buscar_hospedajes_raw")
+    @patch("src.services.buscador_serpapi.consultar_serpapi")
     def test_todos_los_hospedajes_llevan_el_destino_resuelto(self, raw_mock):
         raw_mock.return_value = respuesta_mock()
 
@@ -124,29 +122,27 @@ class TestBuscarHospedajes(unittest.TestCase):
         for hospedaje in hospedajes:
             self.assertEqual(hospedaje.destino_id, 42)
 
-    @patch("src.services.api_searcher.buscar_hospedajes_raw")
+    @patch("src.services.buscador_serpapi.consultar_serpapi")
     def test_destino_se_resuelve_una_sola_vez_con_el_destino_correcto(self, raw_mock):
         raw_mock.return_value = respuesta_mock()
 
         buscar_hospedajes("Medellin", "Colombia")
 
-        from src.services import api_searcher
-        api_searcher.DestinoRepository.obtener_o_crear.assert_called_once()
+        from src.services import buscador_serpapi
+        buscador_serpapi.DestinoRepository.obtener_o_crear.assert_called_once()
 
-    @patch("src.services.api_searcher.buscar_hospedajes_raw")
-    def test_sin_destino_valido_devuelve_lista_vacia(self, raw_mock):
+    @patch("src.services.buscador_serpapi.consultar_serpapi")
+    def test_si_no_se_puede_guardar_el_destino_devuelve_lista_vacia(self, raw_mock):
         raw_mock.return_value = respuesta_mock()
-        from src.services import api_searcher
-        api_searcher.DestinoRepository.obtener_o_crear.return_value = None
+        from src.services import buscador_serpapi
+        buscador_serpapi.DestinoRepository.obtener_o_crear.side_effect = ValueError("ciudad vacía")
 
         hospedajes = buscar_hospedajes("Medellin", "Colombia")
 
         self.assertEqual(hospedajes, [])
 
-    @patch("src.services.api_searcher.buscar_hospedajes_raw")
+    @patch("src.services.buscador_serpapi.consultar_serpapi")
     def test_archivo_guardado_incluye_ciudad_y_pais(self, raw_mock):
-        import json
-
         raw_mock.return_value = respuesta_mock()
 
         buscar_hospedajes("Medellin", "Colombia")
@@ -158,33 +154,31 @@ class TestBuscarHospedajes(unittest.TestCase):
         self.assertEqual(datos["country"], "Colombia")
 
 
-class TestBuscarHospedajesRaw(unittest.TestCase):
+class TestConsultarSerpapi(unittest.TestCase):
 
-    @patch("src.services.api_searcher.requests.get")
+    @patch("src.services.buscador_serpapi.requests.get")
     def test_error_de_red_devuelve_none(self, get_mock):
-        from requests.exceptions import ConnectionError
+        get_mock.side_effect = requests.exceptions.ConnectionError("sin red")
 
-        get_mock.side_effect = ConnectionError("sin red")
+        self.assertIsNone(consultar_serpapi("Medellin", "Colombia"))
 
-        self.assertIsNone(buscar_hospedajes_raw("Medellin", "Colombia"))
-
-    @patch("src.services.api_searcher.requests.get")
+    @patch("src.services.buscador_serpapi.requests.get")
     def test_error_de_api_en_json_devuelve_none(self, get_mock):
         respuesta = unittest.mock.Mock()
         respuesta.raise_for_status.return_value = None
         respuesta.json.return_value = {"error": "Invalid hl value"}
         get_mock.return_value = respuesta
 
-        self.assertIsNone(buscar_hospedajes_raw("Medellin", "Colombia"))
+        self.assertIsNone(consultar_serpapi("Medellin", "Colombia"))
 
-    @patch("src.services.api_searcher.requests.get")
+    @patch("src.services.buscador_serpapi.requests.get")
     def test_respuesta_ok_pasa_presupuesto_como_max_price(self, get_mock):
         respuesta = unittest.mock.Mock()
         respuesta.raise_for_status.return_value = None
         respuesta.json.return_value = {"properties": []}
         get_mock.return_value = respuesta
 
-        resultado = buscar_hospedajes_raw("Medellin", "Colombia", presupuesto_maximo=80)
+        resultado = consultar_serpapi("Medellin", "Colombia", presupuesto_maximo=80)
 
         self.assertEqual(resultado, {"properties": []})
         llamada_params = get_mock.call_args.kwargs["params"]
@@ -196,22 +190,22 @@ class TestBuscarHospedajesRaw(unittest.TestCase):
 class TestIntegracionBuscarYGuardar(BaseDBTestCase):
 
     def setUp(self):
-        super().setUp()  # BaseDBTestCase: TRUNCATE + seed user
+        super().setUp()
         self.archivo_temporal = tempfile.NamedTemporaryFile(suffix=".json", delete=False)
         self.archivo_temporal.close()
-        patcher_ruta = patch("src.services.api_searcher.RUTA_RESPUESTA_PRUEBA",
+        patcher_ruta = patch("src.services.buscador_serpapi.RUTA_RESPUESTA_PRUEBA",
                              self.archivo_temporal.name)
         patcher_ruta.start()
         self.addCleanup(patcher_ruta.stop)
         self.addCleanup(os.unlink, self.archivo_temporal.name)
 
-    @patch("src.services.api_searcher.buscar_hospedajes_raw")
+    @patch("src.services.buscador_serpapi.consultar_serpapi")
     def test_integracion_buscar_y_guardar_persiste(self, mock_raw):
-        mock_raw.return_value = respuesta_mock()  # 2 hoteles
+        mock_raw.return_value = respuesta_mock()
         hospedajes = buscar_hospedajes("Medellin", "Colombia")
         self.assertEqual(len(hospedajes), 2)
         hospedaje_repo = HospedajeRepository()
-        ids = hospedaje_repo.guardar_varios(hospedajes)
+        ids = hospedaje_repo.guardar_lote(hospedajes)
         self.assertTrue(all(isinstance(i, int) for i in ids))
         persistidos = hospedaje_repo.obtener_por_destino(hospedajes[0].destino_id)
         self.assertEqual(len(persistidos), 2)

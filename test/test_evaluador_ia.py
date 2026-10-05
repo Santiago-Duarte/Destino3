@@ -1,7 +1,7 @@
 import unittest
 
 from src.models.hospedaje import Hospedaje
-from src.services.ai_evaluator import seleccionar_candidatos
+from src.services.evaluador_ia import seleccionar_candidatos
 
 
 def crear_hospedaje(nombre, precio_noche, calificacion):
@@ -10,13 +10,13 @@ def crear_hospedaje(nombre, precio_noche, calificacion):
         tipo="hotel",
         precio_noche=precio_noche,
         calificacion=calificacion,
-        direccion="direccion",
-        url_reserva="url",
+        direccion="Calle 1",
+        url_reserva="https://hotel.example",
         destino_id=1,
     )
 
 
-class TestAIEvaluator(unittest.TestCase):
+class TestSeleccionarCandidatos(unittest.TestCase):
 
     def test_seleccionar_candidatos_con_lista_vacia(self):
         resultado = seleccionar_candidatos([], 100)

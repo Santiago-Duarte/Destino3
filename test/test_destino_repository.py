@@ -1,15 +1,11 @@
-import os
-os.environ['ENVIRONMENT'] = 'testing'
-
 import unittest
 from unittest.mock import MagicMock, patch
 
+from src.models.destino import Destino
 from test.db_test_case import BaseDBTestCase
 
-from src.models.destino import Destino
 
-
-class TestDestinos(BaseDBTestCase):
+class TestDestinoRepository(BaseDBTestCase):
 
     def test_guardar_y_obtener_destino(self):
         destino_id = self.crear_destino()
@@ -45,10 +41,10 @@ class TestDestinos(BaseDBTestCase):
         self.assertEqual(destinos[0].ciudad, "Ciudad de México")
         self.assertEqual(destinos[0].pais, "México")
 
-    def test_guardar_destino_invalido_devuelve_none_y_no_guarda(self):
-        resultado = self.destino_repo.guardar(Destino(ciudad=None, pais="Colombia"))
+    def test_guardar_destino_invalido_lanza_value_error_y_no_guarda(self):
+        with self.assertRaises(ValueError):
+            self.destino_repo.guardar(Destino(ciudad=None, pais="Colombia"))
 
-        self.assertIsNone(resultado)
         self.assertEqual(self.destino_repo.obtener_todos(), [])
 
     def test_crear_destino_cuando_no_existe(self):
@@ -71,22 +67,24 @@ class TestDestinos(BaseDBTestCase):
         self.assertEqual(len(self.destino_repo.obtener_todos()), 1)
         self.assertEqual(resultado1, resultado2)
 
-    def test_no_se_crea_destino_porque_es_invalido(self):
-        self.assertIsNone(self.destino_repo.obtener_o_crear(Destino(ciudad=None, pais="Colombia")))
-        self.assertIsNone(self.destino_repo.obtener_o_crear(Destino(ciudad="", pais="Colombia")))
+    def test_obtener_o_crear_con_ciudad_invalida_lanza_value_error(self):
+        with self.assertRaises(ValueError):
+            self.destino_repo.obtener_o_crear(Destino(ciudad=None, pais="Colombia"))
+        with self.assertRaises(ValueError):
+            self.destino_repo.obtener_o_crear(Destino(ciudad="", pais="Colombia"))
 
         self.assertEqual(self.destino_repo.obtener_todos(), [])
 
-    def test_no_se_crea_destino_con_solo_espacios(self):
-        self.assertIsNone(self.destino_repo.obtener_o_crear(Destino(ciudad="   ", pais="Colombia")))
+    def test_obtener_o_crear_con_solo_espacios_lanza_value_error(self):
+        with self.assertRaises(ValueError):
+            self.destino_repo.obtener_o_crear(Destino(ciudad="   ", pais="Colombia"))
 
         self.assertEqual(self.destino_repo.obtener_todos(), [])
 
-    def test_buscar_hospedajes_cuando_no_estan_bien_escritos(self):
-
+    def test_obtener_o_crear_conserva_el_formato_de_ciudad_y_pais(self):
         nuevo_destino = Destino(" MEdellin  ", " CoLombia")
 
-        destino_creado = self.destino_repo.obtener_o_crear(nuevo_destino)
+        self.destino_repo.obtener_o_crear(nuevo_destino)
 
         resultado = self.destino_repo.obtener_todos()
 
@@ -95,57 +93,44 @@ class TestDestinos(BaseDBTestCase):
 
 
 class TestObtenerOCrearDestinoCarrera(BaseDBTestCase):
-    """Tests para la rama de carrera en obtener_o_crear"""
+    """Otra transacción inserta el destino entre el SELECT inicial y el INSERT."""
 
-    @patch("src.repositories.base_repository.BaseRepository._obtener_conexion")
-    def test_carrera_retorna_id_correcto(self, mock_obtener_conexion):
-        mock_conexion = MagicMock()
-        mock_cursor = MagicMock()
-        mock_obtener_conexion.return_value = mock_conexion
-        mock_conexion.cursor.return_value = mock_cursor
-        mock_cursor.fetchone.side_effect = [None, None, (99,)]
+    def _resolver_carrera(self, obtener_conexion):
+        """Simula la carrera y devuelve (id obtenido, cursor y conexión simulados)."""
+        conexion = MagicMock()
+        cursor = MagicMock()
+        obtener_conexion.return_value = conexion
+        conexion.cursor.return_value = cursor
+        cursor.fetchone.side_effect = [None, None, (99,)]
 
         resultado = self.destino_repo.obtener_o_crear(Destino(ciudad="Medellin", pais="Colombia"))
+        return resultado, cursor, conexion
+
+    @patch("src.repositories.base_repository.BaseRepository._obtener_conexion")
+    def test_devuelve_el_id_que_inserto_la_otra_transaccion(self, obtener_conexion):
+        resultado, _, _ = self._resolver_carrera(obtener_conexion)
 
         self.assertEqual(resultado, 99)
 
     @patch("src.repositories.base_repository.BaseRepository._obtener_conexion")
-    def test_carrera_ejecuta_tres_queries(self, mock_obtener_conexion):
-        mock_conexion = MagicMock()
-        mock_cursor = MagicMock()
-        mock_obtener_conexion.return_value = mock_conexion
-        mock_conexion.cursor.return_value = mock_cursor
-        mock_cursor.fetchone.side_effect = [None, None, (99,)]
+    def test_ejecuta_tres_queries(self, obtener_conexion):
+        _, cursor, _ = self._resolver_carrera(obtener_conexion)
 
-        self.destino_repo.obtener_o_crear(Destino(ciudad="Medellin", pais="Colombia"))
-
-        self.assertEqual(mock_cursor.execute.call_count, 3)
+        self.assertEqual(cursor.execute.call_count, 3)
 
     @patch("src.repositories.base_repository.BaseRepository._obtener_conexion")
-    def test_carrera_hace_commit_sin_rollback(self, mock_obtener_conexion):
-        mock_conexion = MagicMock()
-        mock_cursor = MagicMock()
-        mock_obtener_conexion.return_value = mock_conexion
-        mock_conexion.cursor.return_value = mock_cursor
-        mock_cursor.fetchone.side_effect = [None, None, (99,)]
+    def test_hace_commit_sin_rollback(self, obtener_conexion):
+        _, _, conexion = self._resolver_carrera(obtener_conexion)
 
-        self.destino_repo.obtener_o_crear(Destino(ciudad="Medellin", pais="Colombia"))
-
-        mock_conexion.commit.assert_called_once()
-        mock_conexion.rollback.assert_not_called()
+        conexion.commit.assert_called_once()
+        conexion.rollback.assert_not_called()
 
     @patch("src.repositories.base_repository.BaseRepository._obtener_conexion")
-    def test_carrera_cierra_conexion_correctamente(self, mock_obtener_conexion):
-        mock_conexion = MagicMock()
-        mock_cursor = MagicMock()
-        mock_obtener_conexion.return_value = mock_conexion
-        mock_conexion.cursor.return_value = mock_cursor
-        mock_cursor.fetchone.side_effect = [None, None, (99,)]
+    def test_cierra_cursor_y_conexion(self, obtener_conexion):
+        _, cursor, conexion = self._resolver_carrera(obtener_conexion)
 
-        self.destino_repo.obtener_o_crear(Destino(ciudad="Medellin", pais="Colombia"))
-
-        mock_cursor.close.assert_called_once()
-        mock_conexion.close.assert_called_once()
+        cursor.close.assert_called_once()
+        conexion.close.assert_called_once()
 
 
 if __name__ == '__main__':

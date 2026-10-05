@@ -100,20 +100,12 @@ class TestEvaluacionIAOutput(unittest.TestCase):
 class TestSinDuplicacion(unittest.TestCase):
     """El contrato de la IA vive una sola vez, en src/models/evaluacion_ia.py."""
 
-    def test_el_servicio_reutiliza_el_dto_del_dominio(self):
-        from src.services import ai_evaluator
+    def test_el_servicio_y_el_orquestador_usan_el_lote_del_dominio(self):
+        from src.orchestrator import orquestador_evaluacion
+        from src.services import evaluador_ia
 
-        self.assertIs(ai_evaluator.EvaluacionIAOutput, EvaluacionIAOutput)
-
-    def test_el_servicio_no_define_su_propio_contenedor_de_lote(self):
-        from src.services import ai_evaluator
-
-        self.assertFalse(hasattr(ai_evaluator, "Top3Evaluaciones"))
-
-    def test_el_orquestador_no_importa_dtos_desde_el_servicio(self):
-        from src.orchestrator import evaluacion_orchestrator
-
-        self.assertFalse(hasattr(evaluacion_orchestrator, "Top3Evaluaciones"))
+        self.assertIs(evaluador_ia.LoteEvaluacionesIA, LoteEvaluacionesIA)
+        self.assertIs(orquestador_evaluacion.LoteEvaluacionesIA, LoteEvaluacionesIA)
 
     def test_la_clave_de_la_respuesta_de_ia_es_evaluaciones(self):
         propiedades = set(LoteEvaluacionesIA.model_json_schema()["properties"])

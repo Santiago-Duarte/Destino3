@@ -1,21 +1,24 @@
-import os
-os.environ['ENVIRONMENT'] = 'testing'
-
 import unittest
+
 from src.config.database import obtener_conexion
 from src.models.destino import Destino
 from src.models.hospedaje import Hospedaje
+from src.models.busqueda import Busqueda
+from src.models.recomendacion import Recomendacion
 from src.repositories.destino_repository import DestinoRepository
 from src.repositories.hospedaje_repository import HospedajeRepository
 from src.repositories.busqueda_repository import BusquedaRepository
 from src.repositories.recomendacion_repository import RecomendacionRepository
-from src.models.busqueda import Busqueda
-from src.models.recomendaciones import Recomendaciones
 
-_tablas = "busquedas, recomendaciones, evaluaciones_ia, hospedajes, destinos, usuarios"
+TABLAS = "busquedas, recomendaciones, evaluaciones_ia, hospedajes, destinos, usuarios"
 
 
 class BaseDBTestCase(unittest.TestCase):
+    """Base de las pruebas que necesitan base de datos de pruebas.
+
+    Vacía las tablas antes y después de cada prueba y se salta toda la clase
+    si no hay conexión, para que la suite nunca dependa de una BD real.
+    """
 
     @classmethod
     def setUpClass(cls):
@@ -23,7 +26,7 @@ class BaseDBTestCase(unittest.TestCase):
         if cls.conexion is None:
             raise unittest.SkipTest("No se pudo conectar a la base de datos de testing")
         cls.cursor = cls.conexion.cursor()
-        cls._insertar_seed_user()
+        cls._insertar_usuario_semilla()
         cls.destino_repo = DestinoRepository()
         cls.hospedaje_repo = HospedajeRepository()
 
@@ -35,7 +38,7 @@ class BaseDBTestCase(unittest.TestCase):
 
     def setUp(self):
         self._clean_db()
-        self._insertar_seed_user()
+        self._insertar_usuario_semilla()
 
     def tearDown(self):
         self._clean_db()
@@ -43,11 +46,11 @@ class BaseDBTestCase(unittest.TestCase):
     @classmethod
     def _clean_db(cls):
         with cls.conexion.cursor() as cursor:
-            cursor.execute(f"TRUNCATE {_tablas} RESTART IDENTITY CASCADE")
+            cursor.execute(f"TRUNCATE {TABLAS} RESTART IDENTITY CASCADE")
         cls.conexion.commit()
 
     @classmethod
-    def _insertar_seed_user(cls):
+    def _insertar_usuario_semilla(cls):
         cls.cursor.execute(
             "INSERT INTO usuarios (nombre, apellido, correo, password_hash) "
             "VALUES ('admin', 'admin', 'admin@admin.com', 'admin') "
@@ -71,10 +74,9 @@ class BaseDBTestCase(unittest.TestCase):
             destino_id=destino_id,
         )
         valores.update(campos)
-        return self.hospedaje_repo.guardar_varios([Hospedaje(**valores)])[0]
+        return self.hospedaje_repo.guardar_lote([Hospedaje(**valores)])[0]
 
     def crear_busqueda_con_recomendaciones(self, destino_id, num_hospedajes=3):
-        """Crea una búsqueda con recomendaciones para los hospedajes creados."""
         hospedajes = []
         for i in range(1, num_hospedajes + 1):
             h = self.crear_hospedaje(destino_id, nombre=f"Hotel {i}")
@@ -84,7 +86,7 @@ class BaseDBTestCase(unittest.TestCase):
         recomendacion_repo = RecomendacionRepository()
 
         busqueda = Busqueda(
-            id=1,
+            id=None,
             usuario_id=self.usuario_seed_id,
             destino_id=destino_id,
             zona="El poblado",
@@ -96,10 +98,10 @@ class BaseDBTestCase(unittest.TestCase):
         busqueda_id = busqueda_repo.guardar(busqueda)
 
         recomendaciones = [
-            Recomendaciones(id=i, busqueda_id=busqueda_id, hospedaje_id=h, posicion=i)
-            for i, h in enumerate(hospedajes, start=1)
+            Recomendacion(id=None, busqueda_id=busqueda_id, hospedaje_id=h, posicion=posicion)
+            for posicion, h in enumerate(hospedajes, start=1)
         ]
 
-        recomendacion_repo.guardar_varias(recomendaciones, busqueda_id)
+        recomendacion_repo.guardar_lote(recomendaciones)
 
         return busqueda_id, recomendaciones
