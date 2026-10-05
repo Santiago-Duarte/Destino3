@@ -1,3 +1,6 @@
+from src.models.evaluacion_ia import EvaluacionIAOutput
+
+
 class Evaluacion:
     """Entidad de dominio de una evaluación de IA ya persistida.
 
@@ -9,7 +12,7 @@ class Evaluacion:
         - ``id`` lo genera PostgreSQL (nunca la IA).
         - ``hospedaje_id`` es la FK real al hospedaje persistido.
         - No tiene ``id_temporal``: ese token de correlación jamás llega a la
-            base de datos (AGENTS.md #7).
+            base de datos (constitución #4).
 
     Attributes:
         resumen_ejecutivo: Resumen breve del hospedaje.
@@ -36,11 +39,13 @@ class Evaluacion:
         self.hospedaje_id = hospedaje_id
         self.id = id
 
-    def __str__(self) -> str:
-        return f"""
-                {self.id} - Hospedaje: {self.hospedaje_id}
-                Score: {self.score_calidad_precio}
-                Resumen: {self.resumen_ejecutivo}
-                Fuertes: {self.puntos_fuertes}
-                Debiles: {self.puntos_debiles}
-        """
+    @classmethod
+    def desde_ia(cls, evaluacion_ia: EvaluacionIAOutput, hospedaje_id: int) -> "Evaluacion":
+        """Copia los campos de negocio de la respuesta de la IA, sin ``id_temporal``."""
+        return cls(
+            resumen_ejecutivo=evaluacion_ia.resumen_ejecutivo,
+            puntos_fuertes=evaluacion_ia.puntos_fuertes,
+            puntos_debiles=evaluacion_ia.puntos_debiles,
+            score_calidad_precio=evaluacion_ia.score_calidad_precio,
+            hospedaje_id=hospedaje_id,
+        )

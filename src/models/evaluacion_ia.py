@@ -13,7 +13,7 @@ class EvaluacionIAOutput(BaseModel):
         id_temporal: Token de correlación del ciclo con Gemini (no es un ID
             de base de datos): se asigna al construir el prompt, la IA debe
             devolverlo intacto en cada evaluación y así se traduce cada
-            respuesta al hospedaje original. Nunca se persiste (AGENTS.md #7).
+            respuesta al hospedaje original. Nunca se persiste (constitución #4).
         resumen_ejecutivo: Resumen breve del hospedaje.
         puntos_fuertes: Aspectos favorables del hospedaje.
         puntos_debiles: Aspectos desfavorables del hospedaje.

@@ -21,10 +21,3 @@ class Hospedaje:
         self.url_reserva = url_reserva
         self.destino_id = destino_id
         self.id = id
-
-    def __str__(self) -> str:
-        return f"""
-                {self.id} - {self.nombre} - {self.tipo}
-                {self.precio_noche} - {self.calificacion} - {self.direccion}
-                {self.url_reserva} - {self.destino_id}
-        """
