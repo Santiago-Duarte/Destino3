@@ -1,13 +1,11 @@
-import json
-import os
 import threading
 import time
-import tempfile
 import unittest
 from unittest.mock import patch
 
 import requests
 
+from src.exceptions import SerpApiError
 from src.repositories.hospedaje_repository import HospedajeRepository
 from src.services.buscador_serpapi import (
     buscar_hospedajes,
@@ -62,14 +60,6 @@ class TestConstruirLinkGoogleHotels(unittest.TestCase):
 class TestBuscarHospedajes(unittest.TestCase):
 
     def setUp(self):
-        self.archivo_temporal = tempfile.NamedTemporaryFile(suffix=".json", delete=False)
-        self.archivo_temporal.close()
-        patcher_ruta = patch("src.services.buscador_serpapi.RUTA_RESPUESTA_PRUEBA",
-                             self.archivo_temporal.name)
-        patcher_ruta.start()
-        self.addCleanup(patcher_ruta.stop)
-        self.addCleanup(os.unlink, self.archivo_temporal.name)
-
         patcher_destino = patch("src.services.buscador_serpapi.DestinoRepository.obtener_o_crear",
                                 return_value=42)
         patcher_destino.start()
@@ -145,24 +135,21 @@ class TestBuscarHospedajes(unittest.TestCase):
 
     @patch("src.services.buscador_serpapi.consultar_serpapi")
     def test_si_consultar_serpapi_falla_devuelve_lista_vacia(self, raw_mock):
-        raw_mock.side_effect = RuntimeError("error de red")
+        raw_mock.side_effect = SerpApiError("SerpAPI", "consulta", "error de red")
 
         resultado = buscar_hospedajes("Medellin", "Colombia")
 
         self.assertEqual(resultado, [])
         raw_mock.assert_called_once_with("Medellin", "Colombia", None)
 
+    @patch("builtins.open")
     @patch("src.services.buscador_serpapi.consultar_serpapi")
-    def test_archivo_guardado_incluye_ciudad_y_pais(self, raw_mock):
+    def test_no_escribe_respuesta_de_prueba(self, raw_mock, open_mock):
         raw_mock.return_value = respuesta_mock()
 
         buscar_hospedajes("Medellin", "Colombia")
 
-        with open(self.archivo_temporal.name, "r", encoding="utf-8") as f:
-            datos = json.load(f)
-
-        self.assertEqual(datos["city"], "Medellin")
-        self.assertEqual(datos["country"], "Colombia")
+        open_mock.assert_not_called()
 
 
 class TestConsultarSerpapi(unittest.TestCase):
@@ -171,7 +158,7 @@ class TestConsultarSerpapi(unittest.TestCase):
     def test_error_de_red_lanza_runtime_error(self, get_mock):
         get_mock.side_effect = requests.exceptions.ConnectionError("sin red")
 
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(SerpApiError):
             consultar_serpapi("Medellin", "Colombia")
 
     @patch("src.services.buscador_serpapi.requests.get")
@@ -181,12 +168,12 @@ class TestConsultarSerpapi(unittest.TestCase):
         respuesta.json.return_value = {"error": "Invalid hl value"}
         get_mock.return_value = respuesta
 
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(SerpApiError):
             consultar_serpapi("Medellin", "Colombia")
 
     @patch("src.services.buscador_serpapi.settings.SERPAPI_KEY", "")
     def test_falta_serpapi_key_lanza_runtime_error(self):
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(SerpApiError):
             consultar_serpapi("Medellin", "Colombia")
 
     @patch("src.services.buscador_serpapi.requests.get")
@@ -215,13 +202,6 @@ class TestIntegracionBuscarYGuardar(BaseDBTestCase):
 
     def setUp(self):
         super().setUp()
-        self.archivo_temporal = tempfile.NamedTemporaryFile(suffix=".json", delete=False)
-        self.archivo_temporal.close()
-        patcher_ruta = patch("src.services.buscador_serpapi.RUTA_RESPUESTA_PRUEBA",
-                             self.archivo_temporal.name)
-        patcher_ruta.start()
-        self.addCleanup(patcher_ruta.stop)
-        self.addCleanup(os.unlink, self.archivo_temporal.name)
 
     @patch("src.services.buscador_serpapi.consultar_serpapi")
     def test_integracion_buscar_y_guardar_persiste(self, mock_raw):

@@ -1,7 +1,9 @@
 import unittest
+from unittest.mock import patch
 
+from src.exceptions.evaluacion_ia import EvaluacionIALoteError
 from src.models.hospedaje import Hospedaje
-from src.services.evaluador_ia import seleccionar_candidatos
+from src.services.evaluador_ia import EvaluadorIA, seleccionar_candidatos
 
 
 def crear_hospedaje(nombre, precio_noche, calificacion):
@@ -115,6 +117,56 @@ class TestSeleccionarCandidatos(unittest.TestCase):
         resultado = seleccionar_candidatos(hospedajes, 30)
 
         self.assertEqual(len(resultado), 1)
+
+
+class TestReintentosEvaluadorIA(unittest.TestCase):
+
+    def setUp(self):
+        self.hospedajes = [crear_hospedaje("Hotel A", 50, 4.5)]
+        self.respuesta_valida = (
+            '{"evaluaciones": [{"id_temporal": 1, '
+            '"resumen_ejecutivo": "Bueno", "puntos_fuertes": "Ubicación", '
+            '"puntos_debiles": "Precio", "score_calidad_precio": 8}]}'
+        )
+
+    @patch("time.sleep")
+    @patch("src.services.evaluador_ia.settings.GEMINI_BACKOFF_BASE", 0.5)
+    @patch("src.services.evaluador_ia.settings.GEMINI_MAX_REINTENTOS", 2)
+    @patch("src.services.evaluador_ia.settings.GEMINI_API_KEY", "clave-prueba")
+    @patch("src.services.evaluador_ia.genai.Client")
+    def test_falla_dos_veces_y_luego_devuelve_lote_valido(
+            self, cliente_mock, sleep_mock
+    ):
+        respuesta = unittest.mock.Mock(text=self.respuesta_valida)
+        generar = cliente_mock.return_value.models.generate_content
+        generar.side_effect = [TimeoutError("timeout"), RuntimeError("temporal"), respuesta]
+
+        resultado = EvaluadorIA().evaluar_lote(self.hospedajes, 100, "")
+
+        self.assertIsNotNone(resultado)
+        self.assertEqual(generar.call_count, 3)
+        self.assertEqual(sleep_mock.call_args_list[0].args, (0.5,))
+        self.assertEqual(sleep_mock.call_args_list[1].args, (1.0,))
+
+    @patch("time.sleep")
+    @patch("src.services.evaluador_ia.settings.GEMINI_MAX_REINTENTOS", 2)
+    @patch("src.services.evaluador_ia.settings.GEMINI_API_KEY", "clave-prueba")
+    @patch("src.services.evaluador_ia.genai.Client")
+    def test_respuesta_invalida_agota_reintentos_y_lanza_error_de_lote(
+            self, cliente_mock, sleep_mock
+    ):
+        respuesta_invalida = unittest.mock.Mock(text='{"resultado": "invalido"}')
+        generar = cliente_mock.return_value.models.generate_content
+        generar.return_value = respuesta_invalida
+
+        with self.assertRaises(EvaluacionIALoteError) as contexto:
+            EvaluadorIA().evaluar_lote(self.hospedajes, 100, "")
+
+        self.assertIn("agotó los reintentos", str(contexto.exception))
+        self.assertEqual(contexto.exception.proveedor, "Gemini")
+        self.assertEqual(contexto.exception.operacion, "evaluar_lote")
+        self.assertEqual(generar.call_count, 3)
+        self.assertEqual(sleep_mock.call_count, 2)
 
 
 if __name__ == "__main__":
