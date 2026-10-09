@@ -1,10 +1,12 @@
 import json
 import logging
+import time
 
 from google import genai
 from google.genai import types
 
 from src.config import settings
+from src.exceptions.evaluacion_ia import EvaluacionIALoteError
 from src.models.evaluacion_ia import LoteEvaluacionesIA
 from src.models.hospedaje import Hospedaje
 
@@ -82,7 +84,11 @@ class EvaluadorIA:
             Una tupla ``(respuesta_ia, hospedajes_por_id_temporal)`` donde
             ``respuesta_ia`` contiene el top 3 y el segundo elemento traduce
             cada ``id_temporal`` a su hospedaje original, o ``None`` si no hay
-            candidatos o Gemini falla.
+            candidatos.
+
+        Raises:
+            EvaluacionIALoteError: si Gemini sigue fallando después de agotar
+                los reintentos configurados.
         """
         candidatos = seleccionar_candidatos(hospedajes, presupuesto_max)
 
@@ -105,17 +111,28 @@ class EvaluadorIA:
 
         prompt = _construir_prompt(resumen_candidatos, presupuesto_max, preferencias)
 
-        try:
-            response = self._cliente.models.generate_content(
-                model="gemini-3.6-flash",
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=LoteEvaluacionesIA,
-                ),
-            )
-            respuesta = LoteEvaluacionesIA.model_validate_json(response.text)
-            return respuesta, hospedajes_por_id_temporal
-        except Exception as e:
-            logger.error("Error al evaluar el lote de hospedajes: %s", e)
-            return None
+        for intento in range(settings.GEMINI_MAX_REINTENTOS + 1):
+            try:
+                response = self._cliente.models.generate_content(
+                    model="gemini-3.6-flash",
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=LoteEvaluacionesIA,
+                    ),
+                )
+                respuesta = LoteEvaluacionesIA.model_validate_json(response.text)
+                return respuesta, hospedajes_por_id_temporal
+            except Exception as error:
+                logger.error("Error al evaluar el lote de hospedajes: %s", error)
+                if intento >= settings.GEMINI_MAX_REINTENTOS:
+                    raise EvaluacionIALoteError(
+                        "Gemini",
+                        "evaluar_lote",
+                        "El lote agotó los reintentos",
+                    ) from error
+
+                espera = settings.GEMINI_BACKOFF_BASE * (2 ** intento)
+                time.sleep(espera)
+
+        return None

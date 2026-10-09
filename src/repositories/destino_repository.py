@@ -1,4 +1,5 @@
 from src.models.destino import Destino
+from src.exceptions import PersistenciaError
 from src.repositories.base_repository import BaseRepository
 
 
@@ -40,8 +41,8 @@ class DestinoRepository(BaseRepository):
 
         Raises:
             ValueError: Si ciudad o país quedan vacíos.
-            RuntimeError: Si tras el conflicto de índice la otra transacción ya
-                no es visible y no aparece ningún registro.
+            PersistenciaError: Si tras el conflicto de índice la otra
+                transacción ya no es visible y no aparece ningún registro.
         """
         ciudad, pais = self._ciudad_y_pais_validados(destino)
 
@@ -69,4 +70,8 @@ class DestinoRepository(BaseRepository):
             existente = cursor.fetchone()
             if existente:
                 return existente[0]
-            raise RuntimeError(f"No se pudo obtener ni crear el destino {ciudad}/{pais}")
+            raise PersistenciaError(
+                "PostgreSQL",
+                "obtener_o_crear_destino",
+                f"No se pudo obtener ni crear el destino {ciudad}/{pais}",
+            )

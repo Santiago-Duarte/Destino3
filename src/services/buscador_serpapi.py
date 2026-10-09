@@ -1,14 +1,13 @@
-import json
 import logging
 import threading
 import time
 from datetime import datetime, timedelta
-from pathlib import Path
 from urllib.parse import quote
 
 import requests
 
 from src.config import settings
+from src.exceptions import SerpApiError
 from src.models.destino import Destino
 from src.models.hospedaje import Hospedaje
 from src.repositories.destino_repository import DestinoRepository
@@ -19,7 +18,6 @@ _rate_limit_lock = threading.Lock()
 _ultima_llamada_serpapi = 0.0
 
 URL_SERPAPI = "https://serpapi.com/search.json"
-RUTA_RESPUESTA_PRUEBA = Path(__file__).resolve().parents[2] / "respuesta_prueba.json"
 
 
 def _texto_de_busqueda(ciudad: str, pais: str) -> str:
@@ -104,7 +102,7 @@ def _consultar_pagina_con_reintentos(parametros: dict) -> dict | None:
             )
             if not es_error_de_limite:
                 logger.error("Error al buscar hospedajes: %s", error)
-                raise RuntimeError(f"Error al consultar SerpAPI: {error}") from error
+                raise SerpApiError("SerpAPI", "consulta", str(error)) from error
 
             if numero_intento >= settings.SERPAPI_MAX_REINTENTOS:
                 logger.error("SerpAPI agotó los reintentos por límite de tasa")
@@ -126,7 +124,7 @@ def _consultar_pagina_con_reintentos(parametros: dict) -> dict | None:
                 time.sleep(espera_reintento)
         except requests.exceptions.RequestException as error:
             logger.error("Error al buscar hospedajes: %s", error)
-            raise RuntimeError(f"Error al consultar SerpAPI: {error}") from error
+            raise SerpApiError("SerpAPI", "consulta", str(error)) from error
 
     return None
 
@@ -153,7 +151,7 @@ def _obtener_propiedades_paginadas(
 
         if "error" in respuesta_pagina:
             logger.error("Error de la API: %s", respuesta_pagina["error"])
-            raise RuntimeError(f"Error de la API de SerpAPI: {respuesta_pagina['error']}")
+            raise SerpApiError("SerpAPI", "consulta", str(respuesta_pagina["error"]))
 
         if primera_respuesta is None:
             primera_respuesta = respuesta_pagina
@@ -210,13 +208,17 @@ def consultar_serpapi(ciudad: str, pais: str, presupuesto_maximo: float | None =
             no se aplica filtro de precio.
 
     Raises:
-        RuntimeError: si falta la clave ``SERPAPI_KEY``, la petición de red
+        SerpApiError: si falta la clave ``SERPAPI_KEY``, la petición de red
             falla o la API devuelve un error en su JSON. La capa superior
             decide cómo responder (constitución #6).
     """
     if not settings.SERPAPI_KEY:
         logger.error("Falta la clave de la API (SERPAPI_KEY)")
-        raise RuntimeError("Falta la clave de la API (SERPAPI_KEY)")
+        raise SerpApiError(
+            "SerpAPI",
+            "configuracion",
+            "Falta la clave de la API (SERPAPI_KEY)",
+        )
 
     fecha_inicio = datetime.now() + timedelta(days=7)
     fecha_fin = fecha_inicio + timedelta(days=2)
@@ -257,7 +259,7 @@ def buscar_hospedajes(ciudad: str, pais: str, presupuesto_maximo: float | None =
     """
     try:
         resultado = consultar_serpapi(ciudad, pais, presupuesto_maximo)
-    except RuntimeError as error:
+    except SerpApiError as error:
         logger.error("La búsqueda de hospedajes falló: %s", error)
         return []
 
@@ -270,19 +272,7 @@ def buscar_hospedajes(ciudad: str, pais: str, presupuesto_maximo: float | None =
         logger.error("No se pudo obtener o crear el destino: %s", error)
         return []
 
-    guardar_respuesta_prueba(resultado, ciudad, pais)
-
     return mapear_propiedades_en_hospedajes(resultado, id_destino, presupuesto_maximo, ciudad, pais)
-
-
-def guardar_respuesta_prueba(resultado: dict, ciudad: str, pais: str) -> None:
-    datos = resultado.copy()
-    datos['city'] = ciudad
-    datos['country'] = pais
-
-    with open(RUTA_RESPUESTA_PRUEBA, "w", encoding="utf-8") as f:
-        json.dump(datos, f, ensure_ascii=False, indent=4)
-    logger.info("Respuesta guardada en respuesta_prueba.json")
 
 
 def mapear_propiedades_en_hospedajes(
