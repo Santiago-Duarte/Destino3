@@ -1,5 +1,7 @@
 import json
 import logging
+import threading
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote
@@ -12,6 +14,9 @@ from src.models.hospedaje import Hospedaje
 from src.repositories.destino_repository import DestinoRepository
 
 logger = logging.getLogger(__name__)
+
+_rate_limit_lock = threading.Lock()
+_ultima_llamada_serpapi = 0.0
 
 URL_SERPAPI = "https://serpapi.com/search.json"
 RUTA_RESPUESTA_PRUEBA = Path(__file__).resolve().parents[2] / "respuesta_prueba.json"
@@ -29,11 +34,174 @@ def construir_link_google_hotels(property_token: str, fecha_inicio: str, fecha_f
     )
 
 
+def _esperar_rate_limit() -> None:
+    """Serializa las llamadas al proveedor respetando el RPS configurado."""
+    global _ultima_llamada_serpapi
+
+    rate_limit_rps = settings.SERPAPI_RATE_LIMIT_RPS
+    if rate_limit_rps <= 0:
+        return
+
+    intervalo = 1.0 / rate_limit_rps
+    with _rate_limit_lock:
+        ahora = time.monotonic()
+        espera = intervalo - (ahora - _ultima_llamada_serpapi)
+        if espera > 0:
+            time.sleep(espera)
+        _ultima_llamada_serpapi = time.monotonic()
+
+
+def _retry_after(response: requests.Response) -> float | None:
+    """Obtiene ``Retry-After`` en segundos si el header es válido."""
+    valor = response.headers.get("Retry-After")
+    if valor is None:
+        return None
+    try:
+        return max(0.0, float(valor))
+    except (TypeError, ValueError):
+        return None
+
+
+def _crear_parametros_busqueda(
+        ciudad: str,
+        pais: str,
+        presupuesto_maximo: float | None,
+        fecha_inicio: datetime,
+        fecha_fin: datetime,
+) -> dict:
+    parametros_busqueda = {
+        "engine": "google_hotels",
+        "q": _texto_de_busqueda(ciudad, pais),
+        "check_in_date": fecha_inicio.strftime("%Y-%m-%d"),
+        "check_out_date": fecha_fin.strftime("%Y-%m-%d"),
+        "currency": "USD",
+        "hl": "es",
+        "api_key": settings.SERPAPI_KEY,
+    }
+
+    if presupuesto_maximo is not None:
+        parametros_busqueda["max_price"] = presupuesto_maximo
+
+    return parametros_busqueda
+
+
+def _consultar_pagina_con_reintentos(parametros: dict) -> dict | None:
+    for numero_intento in range(settings.SERPAPI_MAX_REINTENTOS + 1):
+        _esperar_rate_limit()
+        try:
+            respuesta_http = requests.get(
+                URL_SERPAPI,
+                params=parametros,
+                timeout=settings.SERPAPI_TIMEOUT,
+            )
+            respuesta_http.raise_for_status()
+            return respuesta_http.json()
+        except requests.exceptions.HTTPError as error:
+            respuesta_error = error.response
+            es_error_de_limite = (
+                respuesta_error is not None
+                and respuesta_error.status_code == 429
+            )
+            if not es_error_de_limite:
+                logger.error("Error al buscar hospedajes: %s", error)
+                raise RuntimeError(f"Error al consultar SerpAPI: {error}") from error
+
+            if numero_intento >= settings.SERPAPI_MAX_REINTENTOS:
+                logger.error("SerpAPI agotó los reintentos por límite de tasa")
+                break
+
+            espera_por_backoff = settings.SERPAPI_BACKOFF_BASE * (2 ** numero_intento)
+            espera_indicada_por_serpapi = _retry_after(respuesta_error)
+            espera_reintento = max(
+                espera_por_backoff,
+                espera_indicada_por_serpapi or 0.0,
+            )
+            logger.warning(
+                "SerpAPI respondió 429; reintento %s de %s en %.2f segundos",
+                numero_intento + 1,
+                settings.SERPAPI_MAX_REINTENTOS,
+                espera_reintento,
+            )
+            if espera_reintento > 0:
+                time.sleep(espera_reintento)
+        except requests.exceptions.RequestException as error:
+            logger.error("Error al buscar hospedajes: %s", error)
+            raise RuntimeError(f"Error al consultar SerpAPI: {error}") from error
+
+    return None
+
+
+def _obtener_propiedades_paginadas(
+        parametros_base: dict,
+        max_paginas: int,
+        max_resultados: int,
+) -> tuple[dict | None, list[dict]]:
+
+    propiedades_acumuladas: list[dict] = []
+    primera_respuesta: dict | None = None
+    siguiente_token: str | None = None
+    paginas_consultadas = 0
+
+    while paginas_consultadas < max_paginas and len(propiedades_acumuladas) < max_resultados:
+        parametros_pagina = dict(parametros_base)
+        if siguiente_token is not None:
+            parametros_pagina["next_page_token"] = siguiente_token
+
+        respuesta_pagina = _consultar_pagina_con_reintentos(parametros_pagina)
+        if respuesta_pagina is None:
+            break
+
+        if "error" in respuesta_pagina:
+            logger.error("Error de la API: %s", respuesta_pagina["error"])
+            raise RuntimeError(f"Error de la API de SerpAPI: {respuesta_pagina['error']}")
+
+        if primera_respuesta is None:
+            primera_respuesta = respuesta_pagina
+
+        propiedades_acumuladas.extend(respuesta_pagina.get("properties", []))
+        paginas_consultadas += 1
+
+        if len(propiedades_acumuladas) >= max_resultados:
+            propiedades_acumuladas = propiedades_acumuladas[:max_resultados]
+            break
+
+        paginacion = respuesta_pagina.get("serpapi_pagination") or {}
+        siguiente_token = paginacion.get("next_page_token")
+        if not siguiente_token:
+            break
+
+    return primera_respuesta, propiedades_acumuladas
+
+
+def _consolidar_respuesta(
+        primera_respuesta: dict | None,
+        propiedades_acumuladas: list[dict],
+        parametros_base: dict,
+) -> dict:
+    if primera_respuesta is None:
+        return {"search_parameters": parametros_base, "properties": []}
+
+    respuesta_consolidada = {}
+    for clave, valor in primera_respuesta.items():
+        if clave not in ("properties", "serpapi_pagination"):
+            respuesta_consolidada[clave] = valor
+    respuesta_consolidada["properties"] = propiedades_acumuladas
+    return respuesta_consolidada
+
+
 def consultar_serpapi(ciudad: str, pais: str, presupuesto_maximo: float | None = None) -> dict | None:
-    """Consulta la API de Google Hotels vía SerpAPI y devuelve la respuesta sin procesar.
+    """Consulta la API de Google Hotels vía SerpAPI y devuelve una respuesta consolidada.
 
     Fija de forma automática una estancia de dos noches a partir de una semana
     y, si se indica presupuesto, lo traduce al parámetro ``max_price`` de la API.
+
+    Recorre las páginas que devuelva SerpAPI (``serpapi_pagination.next_page_token``)
+    respetando los límites operativos de ``SERPAPI_MAX_PAGES`` y
+    ``SERPAPI_MAX_RESULTS``: al alcanzar cualquiera de ellos detiene la
+    obtención de nuevas páginas y conserva los resultados acumulados hasta ese
+    momento (RF-3, RF-9, RF-10). La respuesta consolidada expone las
+    ``search_parameters`` de la primera página y las ``properties`` acumuladas
+    en orden; no expone ``serpapi_pagination``.
 
     Args:
         ciudad: Nombre de la ciudad a buscar.
@@ -41,43 +209,34 @@ def consultar_serpapi(ciudad: str, pais: str, presupuesto_maximo: float | None =
         presupuesto_maximo: Precio por noche máximo en USD; si es ``None``
             no se aplica filtro de precio.
 
-    Returns:
-        El JSON de la respuesta de SerpAPI, o ``None`` si falta la clave
-        ``SERPAPI_KEY``, la petición falla o la API devuelve un error.
+    Raises:
+        RuntimeError: si falta la clave ``SERPAPI_KEY``, la petición de red
+            falla o la API devuelve un error en su JSON. La capa superior
+            decide cómo responder (constitución #6).
     """
     if not settings.SERPAPI_KEY:
         logger.error("Falta la clave de la API (SERPAPI_KEY)")
-        return None
+        raise RuntimeError("Falta la clave de la API (SERPAPI_KEY)")
 
-    check_in = datetime.now() + timedelta(days=7)
-    check_out = check_in + timedelta(days=2)
-
-    params = {
-        "engine": "google_hotels",
-        "q": _texto_de_busqueda(ciudad, pais),
-        "check_in_date": check_in.strftime("%Y-%m-%d"),
-        "check_out_date": check_out.strftime("%Y-%m-%d"),
-        "currency": "USD",
-        "hl": "es",
-        "api_key": settings.SERPAPI_KEY,
-    }
-
-    if presupuesto_maximo is not None:
-        params["max_price"] = presupuesto_maximo
-
-    try:
-        response = requests.get(URL_SERPAPI, params=params, timeout=settings.SERPAPI_TIMEOUT)
-        response.raise_for_status()
-        resultado = response.json()
-    except requests.exceptions.RequestException as e:
-        logger.error("Error al buscar hospedajes: %s", e)
-        return None
-
-    if "error" in resultado:
-        logger.error("Error de la API: %s", resultado["error"])
-        return None
-
-    return resultado
+    fecha_inicio = datetime.now() + timedelta(days=7)
+    fecha_fin = fecha_inicio + timedelta(days=2)
+    parametros_base = _crear_parametros_busqueda(
+        ciudad,
+        pais,
+        presupuesto_maximo,
+        fecha_inicio,
+        fecha_fin,
+    )
+    primera_respuesta, propiedades_acumuladas = _obtener_propiedades_paginadas(
+        parametros_base,
+        settings.SERPAPI_MAX_PAGES,
+        settings.SERPAPI_MAX_RESULTS,
+    )
+    return _consolidar_respuesta(
+        primera_respuesta,
+        propiedades_acumuladas,
+        parametros_base,
+    )
 
 
 def buscar_hospedajes(ciudad: str, pais: str, presupuesto_maximo: float | None = None) -> list[Hospedaje]:
@@ -96,7 +255,11 @@ def buscar_hospedajes(ciudad: str, pais: str, presupuesto_maximo: float | None =
         La lista de hospedajes mapeados; vacía si la API falla, no hay
         resultados o no se puede obtener o crear el destino.
     """
-    resultado = consultar_serpapi(ciudad, pais, presupuesto_maximo)
+    try:
+        resultado = consultar_serpapi(ciudad, pais, presupuesto_maximo)
+    except RuntimeError as error:
+        logger.error("La búsqueda de hospedajes falló: %s", error)
+        return []
 
     if not resultado or "properties" not in resultado:
         return []
