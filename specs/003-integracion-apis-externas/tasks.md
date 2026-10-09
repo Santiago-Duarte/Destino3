@@ -34,15 +34,15 @@
 
 ## Bloque D — Cliente SerpAPI (`src/services/buscador_serpapi.py`)
 
-- [ ] **D1. Parámetros operativos desde `settings` + `logging`** (quitar `print`, propagar errores) (~20 min)
+- [x] **D1. Parámetros operativos desde `settings` + `logging`** (quitar `print`, propagar errores) (~20 min)
   - **RF:** RF-1, RF-10
   - **Depende de:** A1
   - **Hecho cuando:** `grep -n "print(" src/services/buscador_serpapi.py` no da resultados y `requests.get` recibe `timeout=settings.SERPAPI_TIMEOUT`.
-- [ ] **D2. Paginación con `max_pages` / `max_results`** que corta y conserva acumulados (~25 min)
+- [x] **D2. Paginación con `max_pages` / `max_results`** que corta y conserva acumulados (~25 min)
   - **RF:** RF-3
   - **Depende de:** D1
   - **Hecho cuando:** con mock de 3 páginas y `SERPAPI_MAX_PAGES=2` se hacen 2 llamadas y el resultado contiene solo las páginas 1-2.
-- [ ] **D3. Rate limiting (token bucket con `threading.Lock`) + HTTP 429/`Retry-After` + reintentos con backoff** (~30 min)
+- [x] **D3. Rate limiting (token bucket con `threading.Lock`) + HTTP 429/`Retry-After` + reintentos con backoff** (~30 min)
   - **RF:** RF-2, RF-9
   - **Depende de:** D2
   - **Hecho cuando:** mock que devuelve 429 en todos los intentos → el cliente agota reintentos y devuelve los resultados acumulados, y con `SERPAPI_RATE_LIMIT_RPS` configurado no se exceden las llamadas/s en dos hilos.
