@@ -46,25 +46,29 @@
   - **RF:** RF-2, RF-9
   - **Depende de:** D2
   - **Hecho cuando:** mock que devuelve 429 en todos los intentos → el cliente agota reintentos y devuelve los resultados acumulados, y con `SERPAPI_RATE_LIMIT_RPS` configurado no se exceden las llamadas/s en dos hilos.
-- [ ] **D4. Eliminar la escritura de `respuesta_prueba.json` de `buscador_serpapi.py`** (pendiente 7 de `proximas-tareas.md`) (~15 min)
+- [x] **D4. Eliminar la escritura de `respuesta_prueba.json` de `buscador_serpapi.py`** (pendiente 7 de `proximas-tareas.md`) (~15 min)
   - **RF:** RF-1 (refactor, sin cambio de comportamiento)
   - **Depende de:** D1
   - **Hecho cuando:** `grep -rn "respuesta_prueba.json\|escribir_ciudad_pais" src/` no da resultados y `python3 -m pytest test/ -q` queda verde tras adaptar `test_buscador_serpapi.py`.
 
 ## Bloque E — Evaluador Gemini (`src/services/evaluador_ia.py`)
 
-- [ ] **E1. Reintentos con backoff exponencial** (timeout, error temporal, 5xx, respuesta inválida) con intentos desde `settings` (~25 min)
+- [x] **E1. Reintentos con backoff exponencial** (timeout, error temporal, 5xx, respuesta inválida) con intentos desde `settings` (~25 min)
   - **RF:** RF-7, RF-9, RF-10
   - **Depende de:** A1, B2
   - **Hecho cuando:** mock que falla 2 veces y luego responde válido → se retornó el lote tras 3 llamadas; con respuesta siempre inválida se agotan los intentos.
-- [ ] **E2. Fallo de lote explícito** (`logging`, propagar a la capa superior, sin `print`, sin evaluaciones parciales) (~15 min)
+- [x] **E2. Fallo de lote explícito** (`logging`, propagar a la capa superior, sin `print`, sin evaluaciones parciales) (~15 min)
   - **RF:** RF-7
   - **Depende de:** E1
   - **Hecho cuando:** `grep -n "print(" src/services/evaluador_ia.py` no da resultados y un lote fallido lanza excepción que el orquestador puede detectar antes de persistir.
+- [x] **E3. Excepciones personalizadas por capa y proveedor** para reemplazar `RuntimeError` genérico y comunicar con precisión dónde y por qué falló cada operación (~25 min)
+  - **RF:** RF-2, RF-7, RF-9
+  - **Depende de:** D3, E2
+  - **Hecho cuando:** los servicios lanzan excepciones de dominio específicas para SerpAPI, Gemini y persistencia, conservan la causa original y los tests verifican el tipo, proveedor y contexto del fallo sin depender de mensajes genéricos.
 
 ## Bloque F — Orquestador de integración
 
-- [ ] **F1. `src/orchestrator/orquestador_integracion.py`: búsqueda → persistir hospedajes → evaluación en lote** (~30 min)
+- [x] **F1. `src/orchestrator/orquestador_integracion.py`: búsqueda → persistir hospedajes → evaluación en lote** (~30 min)
   - **RF:** RF-1, RF-4, RF-5
   - **Depende de:** C1, D3, B2
   - **Hecho cuando:** con mocks de SerpAPI y Gemini, el flujo deja N filas en `hospedajes` con ID real y hace exactamente 1 llamada a Gemini.
