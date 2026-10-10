@@ -72,11 +72,11 @@
   - **RF:** RF-1, RF-4, RF-5
   - **Depende de:** C1, D3, B2
   - **Hecho cuando:** con mocks de SerpAPI y Gemini, el flujo deja N filas en `hospedajes` con ID real y hace exactamente 1 llamada a Gemini.
-- [ ] **F2. Persistir evaluaciones con mapeo `id_temporal` → `hospedaje_id`** y abortar si el lote falló (~20 min)
+- [x] **F2. Persistir evaluaciones con mapeo `id_temporal` → `hospedaje_id`** y abortar si el lote falló (~20 min)
   - **RF:** RF-7, RF-8
   - **Depende de:** F1, C2
   - **Hecho cuando:** cada fila de `evaluaciones_ia` tiene `hospedaje_id` FK correcta y 0 filas cuando el lote de IA falla.
-- [ ] **F3. Caso límite: sin resultados** (~10 min)
+- [x] **F3. Caso límite: sin resultados** (~10 min)
   - **RF:** RF-1
   - **Depende de:** F1
   - **Hecho cuando:** mock con `properties: []` → el orquestador retorna `[]`, con 0 llamadas a Gemini y 0 filas nuevas.
