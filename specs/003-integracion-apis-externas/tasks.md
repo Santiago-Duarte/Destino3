@@ -83,43 +83,43 @@
 
 ## Bloque G — Fixtures y tests (uno por nivel/archivo)
 
-- [ ] **G1. Fixtures SerpAPI en `test/fixtures/`** (`hospedaje_completo`, `hospedaje_sin_resenas`, `serpapi_rate_limit_429`, `serpapi_paginacion_multiple`, `busqueda_sin_resultados`) (~25 min)
+- [x] **G1. Fixtures SerpAPI en `test/fixtures/`** (`hospedaje_completo`, `hospedaje_sin_resenas`, `serpapi_rate_limit_429`, `serpapi_paginacion_multiple`, `busqueda_sin_resultados`) (~25 min)
   - **RF:** RF-11
   - **Depende de:** D3
   - **Hecho cuando:** los 5 JSON cargan con `json.load` y contienen las claves que consumen `buscador_serpapi`.
-- [ ] **G2. Fixtures Gemini** (`gemini_respuesta_valida`, `gemini_respuesta_invalida`) (~15 min)
+- [x] **G2. Fixtures Gemini** (`gemini_respuesta_valida`, `gemini_respuesta_invalida`) (~15 min)
   - **RF:** RF-11
   - **Depende de:** B2
   - **Hecho cuando:** la válida pasa `LoteEvaluacionesIA.model_validate_json` y la inválida lanza `ValidationError`.
-- [ ] **G3. `test/test_config_settings.py`** (~10 min)
+- [x] **G3. `test/test_config_settings.py`** (~10 min)
   - **RF:** RF-10
   - **Depende de:** A1
   - **Hecho cuando:** cambiar una variable de entorno en la prueba cambia el valor leído sin tocar código.
-- [ ] **G4. `test/test_buscador_serpapi.py` — búsqueda y límites** (~25 min)
+- [x] **G4. `test/test_buscador_serpapi.py` — búsqueda y límites** (~25 min)
   - **RF:** RF-1, RF-3
   - **Depende de:** D2, G1
   - **Hecho cuando:** cubre resultados válidos, ausencia de resultados, corte por `max_pages` y por `max_results`, y `python3 -m pytest test/test_buscador_serpapi.py -q` está verde.
-- [ ] **G5. `test/test_buscador_serpapi.py` — rate limit y reintentos** (~25 min)
+- [x] **G5. `test/test_buscador_serpapi.py` — rate limit y reintentos** (~25 min)
   - **RF:** RF-2, RF-9
   - **Depende de:** D3, G1
   - **Hecho cuando:** cubre 429 con recuperación, 429 con agotamiento conservando acumulados y límite de RPS, y el archivo está verde.
-- [ ] **G6. `test/test_evaluador_ia.py` — lote y validación** (~25 min)
+- [x] **G6. `test/test_evaluador_ia.py` — lote y validación** (~25 min)
   - **RF:** RF-5, RF-6
   - **Depende de:** B2, E1, G2
   - **Hecho cuando:** cubre 1 llamada por lote, respuesta válida, respuesta inválida y hospedaje sin reseñas, con el archivo en verde.
-- [ ] **G7. `test/test_evaluador_ia.py` — reintentos y fallo de lote** (~20 min)
+- [x] **G7. `test/test_evaluador_ia.py` — reintentos y fallo de lote** (~20 min)
   - **RF:** RF-7
   - **Depende de:** E2, G2
   - **Hecho cuando:** cubre agotamiento de reintentos y la no creación de evaluaciones parciales, con el archivo en verde.
-- [ ] **G8. `test/test_hospedaje_repository.py` + `test/test_evaluacion_ia_repository.py`** (BD de pruebas) (~30 min)
+- [x] **G8. `test/test_hospedaje_repository.py` + `test/test_evaluacion_ia_repository.py`** (BD de pruebas) (~30 min)
   - **RF:** RF-4, RF-8
   - **Depende de:** C1, C2
   - **Hecho cuando:** `python3 -m pytest test/test_hospedaje_repository.py test/test_evaluacion_ia_repository.py -q` verde contra `destino3_test_db`, con IDs reales y FK correcta.
-- [ ] **G9. `test/test_integracion_flujo_completo.py`** (mocks + BD de pruebas) (~30 min)
+- [x] **G9. `test/test_integracion_flujo_completo.py`** (mocks + BD de pruebas) (~30 min)
   - **RF:** RF-1 a RF-8, RF-11
   - **Depende de:** F3, G4, G5, G6, G7, G8
   - **Hecho cuando:** búsqueda simulada → hospedajes persistidos → evaluación simulada en lote → evaluaciones persistidas corre en verde sin tocar APIs reales.
-- [ ] **G10. Checklist de criterios de finalización** (~15 min)
+- [x] **G10. Checklist de criterios de finalización** (~15 min)
   - **RF:** RF-11 (cobertura completa)
   - **Depende de:** G9
   - **Hecho cuando:** los 8 casos mínimos de la spec (completo, sin reseñas, IA válida, IA inválida, 429, agotamiento de reintentos, sin resultados, límite de paginación) tienen al menos una prueba que falla si se elimina.

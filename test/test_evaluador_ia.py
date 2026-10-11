@@ -1,9 +1,13 @@
+from pathlib import Path
 import unittest
 from unittest.mock import patch
 
 from src.exceptions.evaluacion_ia import EvaluacionIALoteError
 from src.models.hospedaje import Hospedaje
 from src.services.evaluador_ia import EvaluadorIA, seleccionar_candidatos
+
+
+RUTA_FIXTURES = Path(__file__).parent / "fixtures"
 
 
 def crear_hospedaje(nombre, precio_noche, calificacion):
@@ -155,7 +159,9 @@ class TestReintentosEvaluadorIA(unittest.TestCase):
     def test_respuesta_invalida_agota_reintentos_y_lanza_error_de_lote(
             self, cliente_mock, sleep_mock
     ):
-        respuesta_invalida = unittest.mock.Mock(text='{"resultado": "invalido"}')
+        respuesta_invalida = unittest.mock.Mock(
+            text=(RUTA_FIXTURES / "gemini_respuesta_invalida.json").read_text(encoding="utf-8")
+        )
         generar = cliente_mock.return_value.models.generate_content
         generar.return_value = respuesta_invalida
 
@@ -167,6 +173,43 @@ class TestReintentosEvaluadorIA(unittest.TestCase):
         self.assertEqual(contexto.exception.operacion, "evaluar_lote")
         self.assertEqual(generar.call_count, 3)
         self.assertEqual(sleep_mock.call_count, 2)
+
+
+class TestLoteEvaluadorIA(unittest.TestCase):
+
+    @patch("src.services.evaluador_ia.settings.GEMINI_API_KEY", "clave-prueba")
+    @patch("src.services.evaluador_ia.genai.Client")
+    def test_respuesta_valida_de_fixture_se_evalua_en_una_sola_llamada(self, cliente_mock):
+        respuesta = unittest.mock.Mock(
+            text=(RUTA_FIXTURES / "gemini_respuesta_valida.json").read_text(encoding="utf-8")
+        )
+        generar = cliente_mock.return_value.models.generate_content
+        generar.return_value = respuesta
+
+        resultado = EvaluadorIA().evaluar_lote(
+            [crear_hospedaje("Hotel A", 50, 4.5), crear_hospedaje("Hotel B", 60, 4.0)],
+            100,
+            "",
+        )
+
+        self.assertIsNotNone(resultado)
+        self.assertEqual(len(resultado[0].evaluaciones), 3)
+        self.assertEqual(generar.call_count, 1)
+
+    @patch("src.services.evaluador_ia.settings.GEMINI_API_KEY", "clave-prueba")
+    @patch("src.services.evaluador_ia.genai.Client")
+    def test_hospedaje_sin_resenas_usa_la_informacion_disponible(self, cliente_mock):
+        respuesta = unittest.mock.Mock(
+            text=(RUTA_FIXTURES / "gemini_respuesta_valida.json").read_text(encoding="utf-8")
+        )
+        generar = cliente_mock.return_value.models.generate_content
+        generar.return_value = respuesta
+        hospedaje = crear_hospedaje("Hotel Sin Resenas", 50, 4.5)
+
+        resultado = EvaluadorIA().evaluar_lote([hospedaje], 100, "")
+
+        self.assertIsNotNone(resultado)
+        self.assertEqual(generar.call_count, 1)
 
 
 if __name__ == "__main__":
