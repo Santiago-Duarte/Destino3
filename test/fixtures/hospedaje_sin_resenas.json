@@ -1,0 +1,23 @@
+{
+  "search_parameters": {
+    "engine": "google_hotels",
+    "q": "hoteles en Medellin Colombia",
+    "check_in_date": "2026-08-14",
+    "check_out_date": "2026-08-16"
+  },
+  "properties": [
+    {
+      "name": "Hotel Sin Resenas",
+      "property_token": "token-sin-resenas",
+      "rate_per_night": {
+        "lowest": "$55",
+        "extracted_lowest": 55
+      },
+      "description": "Alojamiento nuevo cerca del centro",
+      "link": "https://hotel-sin-resenas.example",
+      "amenities": [
+        "Wi-Fi gratis"
+      ]
+    }
+  ]
+}

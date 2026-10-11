@@ -1,0 +1,25 @@
+{
+  "evaluaciones": [
+    {
+      "id_temporal": 1,
+      "resumen_ejecutivo": "Hotel bien ubicado y con buena relación calidad-precio.",
+      "puntos_fuertes": "Ubicación, desayuno y limpieza.",
+      "puntos_debiles": "Habitaciones pequeñas.",
+      "score_calidad_precio": 9
+    },
+    {
+      "id_temporal": 2,
+      "resumen_ejecutivo": "Alojamiento cómodo para una estancia corta.",
+      "puntos_fuertes": "Precio y atención.",
+      "puntos_debiles": "Pocas amenidades.",
+      "score_calidad_precio": 8
+    },
+    {
+      "id_temporal": 3,
+      "resumen_ejecutivo": "Opción tranquila fuera del centro.",
+      "puntos_fuertes": "Espacio y silencio.",
+      "puntos_debiles": "Requiere transporte para llegar al centro.",
+      "score_calidad_precio": 7
+    }
+  ]
+}

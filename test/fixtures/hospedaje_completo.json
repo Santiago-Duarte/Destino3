@@ -1,0 +1,31 @@
+{
+  "search_parameters": {
+    "engine": "google_hotels",
+    "q": "hoteles en Medellin Colombia",
+    "check_in_date": "2026-08-14",
+    "check_out_date": "2026-08-16"
+  },
+  "properties": [
+    {
+      "name": "Hotel Completo",
+      "property_token": "token-completo",
+      "rate_per_night": {
+        "lowest": "$64",
+        "extracted_lowest": 64
+      },
+      "overall_rating": 4.5,
+      "description": "Hotel en el centro de Medellin",
+      "link": "https://hotel-completo.example",
+      "reviews": [
+        {
+          "content": "Excelente ubicacion",
+          "rating": 5
+        }
+      ],
+      "amenities": [
+        "Wi-Fi gratis",
+        "Desayuno incluido"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "search_parameters": {
+    "engine": "google_hotels",
+    "q": "hoteles en Ciudad Inexistente Pais Inexistente",
+    "check_in_date": "2026-08-14",
+    "check_out_date": "2026-08-16"
+  },
+  "properties": []
+}

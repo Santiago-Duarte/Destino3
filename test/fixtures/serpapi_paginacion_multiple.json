@@ -1,0 +1,23 @@
+{
+  "search_parameters": {
+    "engine": "google_hotels",
+    "q": "hoteles en Medellin Colombia",
+    "check_in_date": "2026-08-14",
+    "check_out_date": "2026-08-16"
+  },
+  "properties": [
+    {
+      "name": "Hotel Pagina 1",
+      "property_token": "token-pagina-1",
+      "rate_per_night": {
+        "extracted_lowest": 70
+      },
+      "overall_rating": 4.2,
+      "description": "Primera pagina",
+      "link": "https://hotel-pagina-1.example"
+    }
+  ],
+  "serpapi_pagination": {
+    "next_page_token": "token-siguiente-pagina"
+  }
+}
