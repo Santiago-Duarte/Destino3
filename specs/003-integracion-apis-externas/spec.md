@@ -162,13 +162,19 @@ Esta sección describe únicamente el estado actual de la implementación y no c
   `puntos_debiles` y `score_calidad_precio`.
 - **Modelo IA:** actualmente está definido directamente en la implementación.
 - **Persistencia:** actualmente los hospedajes se guardan antes de la evaluación de IA, obteniendo identificadores
-  persistentes que posteriormente permiten relacionar las evaluaciones.
-- **Rate limiting:** actualmente no está implementado de forma completa.
-- **Reintentos:** actualmente no existe una política completa de reintentos para la IA.
-- **Configuración:** actualmente solo parte de la configuración se obtiene desde variables de entorno; otros parámetros
-  permanecen definidos en la implementación.
+  persistentes; las evaluaciones válidas se mapean mediante `id_temporal` y se guardan con el `hospedaje_id` real.
+- **Rate limiting:** actualmente se aplica un límite global entre hilos mediante un token bucket simple protegido por
+  `threading.Lock`, configurable con `SERPAPI_RATE_LIMIT_RPS`.
+- **Reintentos:** actualmente SerpAPI reintenta HTTP 429 respetando `Retry-After` y backoff exponencial, y Gemini
+  reintenta errores temporales, respuestas inválidas y fallos del proveedor con parámetros configurables.
+- **Configuración:** actualmente los timeouts, límites, rate limiting, reintentos, backoff y claves se cargan desde
+  variables de entorno mediante `src/config/settings.py`.
 - **Top 3:** actualmente la respuesta de Gemini participa directamente en la determinación de los tres elementos
   devueltos. La responsabilidad futura de determinar las recomendaciones finales corresponde a Destino3 y no a Gemini.
+- **Errores y seguridad:** actualmente los servicios usan excepciones de dominio contextualizadas y los logs no incluyen
+  URLs de proveedores, respuestas completas, credenciales ni detalles de conexión.
+- **Demo:** actualmente existe `src/demo_integracion.py` para ejecutar manualmente el flujo real o informar de forma
+  segura si faltan credenciales.
 
 ## Dudas abiertas
 

@@ -126,19 +126,19 @@
 
 ## Bloque H — Cierre de Fase 3.4
 
-- [ ] **H1. Barrido de `print()` → `logging` y sin exponer claves** en `src/` (~20 min)
+- [x] **H1. Barrido de `print()` → `logging` y sin exponer claves** en `src/` (~20 min)
   - **RF:** RF-9 (NFR Seguridad/Observabilidad)
   - **Depende de:** D4, E2, F2
   - **Hecho cuando:** `grep -rn "print(" src/` no da resultados y ningún log muestra `SERPAPI_KEY`/`GEMINI_API_KEY`.
-- [ ] **H2. Suite completa en verde** (~15 min)
+- [x] **H2. Suite completa en verde** (~15 min)
   - **RF:** todos
   - **Depende de:** H1, G10
   - **Hecho cuando:** `python3 -m pytest test/` termina sin errores y sin skips por BD inaccesible.
-- [ ] **H3. Script `src/demo_integracion.py` + ejecución manual** (~25 min)
+- [x] **H3. Script `src/demo_integracion.py` + ejecución manual** (~25 min)
   - **RF:** criterio de finalización
   - **Depende de:** H2
   - **Hecho cuando:** `python3 -m src.demo_integracion` imprime hospedajes persistidos y sus evaluaciones contra APIs reales (o avisa explícitamente que faltan credenciales).
-- [ ] **H4. Actualizar documentación** (`plan.md` tabla de módulos, `spec.md` §Estado actual, `fases/fase-3.md` tarea 3.4) (~20 min)
+- [x] **H4. Actualizar documentación** (`plan.md` tabla de módulos, `spec.md` §Estado actual, `fases/fase-3.md` tarea 3.4) (~20 min)
   - **RF:** — (documentación viva, constitución #11)
   - **Depende de:** H3
   - **Hecho cuando:** `grep -n "3.4" fases/fase-3.md` aparece marcada como completada y la tabla de módulos de `plan.md` coincide con los archivos reales de `src/`.

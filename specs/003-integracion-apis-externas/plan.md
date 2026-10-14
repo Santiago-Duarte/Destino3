@@ -20,6 +20,8 @@ modelos → repositories → services → orchestration → config → entry poi
 | **Repositorio Hospedajes** | `src/repositories/hospedaje_repository.py` | Persistencia de hospedajes con IDs reales (FK a destinos), transacción única | RF-4 |
 | **Repositorio Evaluaciones IA** | `src/repositories/evaluacion_ia_repository.py` | Persistencia de evaluaciones vinculadas a hospedaje_id (solo campos de negocio) | RF-8 |
 | **Orquestador de Integración** | `src/orchestrator/orquestador_integracion.py` | Flujo completo: búsqueda → persistencia hospedajes → evaluación IA batch → persistencia evaluaciones | RF-1 a RF-8, RF-9 |
+| **Excepciones de integración** | `src/exceptions/` | Excepciones de dominio contextualizadas por proveedor y operación, sin exponer credenciales | RF-2, RF-7, RF-9 |
+| **Demo manual** | `src/demo_integracion.py` | Smoke test configurable contra APIs reales, con persistencia y salida segura por logging | Criterio de finalización |
 | **Fixtures de prueba** | `test/fixtures/` | JSONs para: hospedaje completo, sin reseñas, respuesta IA válida/inválida, rate limit 429, paginación | RF-11 |
 
 ---
@@ -111,13 +113,13 @@ modelos → repositories → services → orchestration → config → entry poi
 | 3 | Repositorio Hospedajes (persistencia batch) | `src/repositories/hospedaje_repository.py` | RF-4 |
 | 4 | Repositorio Evaluaciones IA | `src/repositories/evaluacion_ia_repository.py` | RF-8 |
 | 5 | Cliente SerpAPI (paginación, rate limit, reintentos) | `src/services/buscador_serpapi.py` | RF-1, RF-2, RF-3, RF-9 |
-| 6 | Evaluador Gemini (batch, validación, reintentos) | `src/services/gemini_evaluator.py` | RF-5, RF-6, RF-7, RF-9 |
+| 6 | Evaluador Gemini (batch, validación, reintentos) | `src/services/evaluador_ia.py` | RF-5, RF-6, RF-7, RF-9 |
 | 7 | Orquestador de Integración | `src/orchestrator/orquestador_integracion.py` | Une todo el flujo |
 | 8 | Fixtures de prueba | `test/fixtures/` | Base para tests |
 | 9 | Tests unitarios servicios | `test/test_buscador_serpapi.py`, `test/test_evaluador_ia.py` | Mocks externos |
 | 10 | Tests unitarios repositorios | `test/test_hospedaje_repository.py`, `test/test_evaluacion_ia_repository.py` | BD real test |
 | 11 | Test de integración | `test/test_integracion_flujo_completo.py` | Flujo end-to-end |
-| 12 | Script demo manual | `src/demo_integracion.py` | Verificación opcional real |
+| 12 | Script demo manual | `src/demo_integracion.py` | Verificación opcional real; avisa si faltan credenciales |
 
 ---
 
