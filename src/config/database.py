@@ -29,5 +29,5 @@ def obtener_conexion() -> ConexionPostgres | None:
             password=os.getenv('DB_PASSWORD')
         )
     except Exception as e:
-        logger.error("Error al conectar a la base de datos: %s", e)
+        logger.error("Error al conectar a la base de datos: tipo=%s", type(e).__name__)
         return None

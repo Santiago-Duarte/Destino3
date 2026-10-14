@@ -60,7 +60,7 @@ class EvaluadorIA:
 
     def __init__(self) -> None:
         if not settings.GEMINI_API_KEY:
-            raise ValueError("GEMINI_API_KEY no está definida")
+            raise ValueError("Falta la credencial del proveedor de IA")
         self._cliente = genai.Client(api_key=settings.GEMINI_API_KEY)
 
     def evaluar_lote(
@@ -124,7 +124,7 @@ class EvaluadorIA:
                 respuesta = LoteEvaluacionesIA.model_validate_json(response.text)
                 return respuesta, hospedajes_por_id_temporal
             except Exception as error:
-                logger.error("Error al evaluar el lote de hospedajes: %s", error)
+                logger.error("Error al evaluar el lote de hospedajes: tipo=%s", type(error).__name__)
                 if intento >= settings.GEMINI_MAX_REINTENTOS:
                     raise EvaluacionIALoteError(
                         "Gemini",

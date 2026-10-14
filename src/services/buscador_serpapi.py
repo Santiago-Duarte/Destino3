@@ -78,7 +78,7 @@ def _crear_parametros_busqueda(
     }
 
     if presupuesto_maximo is not None:
-        parametros_busqueda["max_price"] = presupuesto_maximo
+        parametros_busqueda["max_price"] = int(presupuesto_maximo)
 
     return parametros_busqueda
 
@@ -101,8 +101,8 @@ def _consultar_pagina_con_reintentos(parametros: dict) -> dict | None:
                 and respuesta_error.status_code == 429
             )
             if not es_error_de_limite:
-                logger.error("Error al buscar hospedajes: %s", error)
-                raise SerpApiError("SerpAPI", "consulta", str(error)) from error
+                logger.error("Error al consultar SerpAPI: tipo=%s", type(error).__name__)
+                raise SerpApiError("SerpAPI", "consulta", type(error).__name__) from error
 
             if numero_intento >= settings.SERPAPI_MAX_REINTENTOS:
                 logger.error("SerpAPI agotó los reintentos por límite de tasa")
@@ -123,8 +123,8 @@ def _consultar_pagina_con_reintentos(parametros: dict) -> dict | None:
             if espera_reintento > 0:
                 time.sleep(espera_reintento)
         except requests.exceptions.RequestException as error:
-            logger.error("Error al buscar hospedajes: %s", error)
-            raise SerpApiError("SerpAPI", "consulta", str(error)) from error
+            logger.error("Error al consultar SerpAPI: tipo=%s", type(error).__name__)
+            raise SerpApiError("SerpAPI", "consulta", type(error).__name__) from error
 
     return None
 
@@ -150,8 +150,8 @@ def _obtener_propiedades_paginadas(
             break
 
         if "error" in respuesta_pagina:
-            logger.error("Error de la API: %s", respuesta_pagina["error"])
-            raise SerpApiError("SerpAPI", "consulta", str(respuesta_pagina["error"]))
+            logger.error("Error reportado por la API de SerpAPI")
+            raise SerpApiError("SerpAPI", "consulta", "Error reportado por la API")
 
         if primera_respuesta is None:
             primera_respuesta = respuesta_pagina
@@ -213,11 +213,11 @@ def consultar_serpapi(ciudad: str, pais: str, presupuesto_maximo: float | None =
             decide cómo responder (constitución #6).
     """
     if not settings.SERPAPI_KEY:
-        logger.error("Falta la clave de la API (SERPAPI_KEY)")
+        logger.error("Falta la credencial requerida del proveedor")
         raise SerpApiError(
             "SerpAPI",
             "configuracion",
-            "Falta la clave de la API (SERPAPI_KEY)",
+            "Falta la credencial del proveedor",
         )
 
     fecha_inicio = datetime.now() + timedelta(days=7)
@@ -260,7 +260,7 @@ def buscar_hospedajes(ciudad: str, pais: str, presupuesto_maximo: float | None =
     try:
         resultado = consultar_serpapi(ciudad, pais, presupuesto_maximo)
     except SerpApiError as error:
-        logger.error("La búsqueda de hospedajes falló: %s", error)
+        logger.error("La búsqueda de hospedajes falló: tipo=%s", type(error).__name__)
         return []
 
     if not resultado or "properties" not in resultado:
@@ -269,7 +269,7 @@ def buscar_hospedajes(ciudad: str, pais: str, presupuesto_maximo: float | None =
     try:
         id_destino = DestinoRepository().obtener_o_crear(Destino(ciudad=ciudad, pais=pais))
     except Exception as error:
-        logger.error("No se pudo obtener o crear el destino: %s", error)
+        logger.error("No se pudo obtener o crear el destino: tipo=%s", type(error).__name__)
         return []
 
     return mapear_propiedades_en_hospedajes(resultado, id_destino, presupuesto_maximo, ciudad, pais)
