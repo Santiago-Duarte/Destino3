@@ -22,6 +22,10 @@ REST → frontend → despliegue); la fase activa integra las APIs externas.
 - `test/` — pruebas en `unittest` (`db_test_case.py` define `BaseDBTestCase`); **no** existe `conftest.py` ni fixtures
   de pytest.
 - `sql/` — `schema.sql` (esquema nuevo) y `migrations/*.sql` (se aplican a mano).
+- `operacion/` — artefactos operacionales fuera de `src/` y sin interfaz pública (spec 004:
+  `reset/preflight.py` inventario y validación base/rol; `reset/procedimiento.py` transacción única de
+  vaciado + esquema con evidencia en `reset/evidencia_reset.json` que bloquea reejecutar (RF-9);
+  `reset/ejecutar.py` orquesta preflight con el rol de production y transacción con el dueño de las tablas).
 - `docs/constitucion.md` — reglas permanentes del proyecto.
 - `specs/003-integracion-apis-externas/` — spec + plan + tasks de la fase activa.
 - `fases/fase-1.md` … `fases/fase-7.md` — roadmap por fases.

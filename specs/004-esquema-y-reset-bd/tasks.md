@@ -157,54 +157,54 @@ por esta spec; no requiere confirmacion humana por la decision documentada de sp
 
 ## Bloque G - Pruebas de esquema, unicidad y aislamiento
 
-- [ ] **G1. Añadir pruebas de contrato del esquema en `destino3_test_db`** (~25 min)
+- [x] **G1. Añadir pruebas de contrato del esquema en `destino3_test_db`** (~25 min)
   - **RF:** RF-4, RF-5
   - **Depende de:** F4
   - **Hecho cuando:** las pruebas consultan `information_schema` y los catálogos de PostgreSQL y verifican columna nullable, unicidad, FKs y checks esperados sin modificar el esquema.
 
-- [ ] **G2. Añadir pruebas de persistencia y conflicto de `google_place_id`** (~25 min)
+- [x] **G2. Añadir pruebas de persistencia y conflicto de `google_place_id`** (~25 min)
   - **RF:** RF-4
   - **Depende de:** G1, C2
   - **Hecho cuando:** una prueba persiste dos hospedajes sin identificador, otra persiste un identificador no nulo y otra confirma `IntegrityError` al repetirlo, sin filas parciales despues del rollback.
 
-- [ ] **G3. Añadir prueba de rollback de una operacion SQL fallida** (~25 min)
+- [x] **G3. Añadir prueba de rollback de una operacion SQL fallida** (~25 min)
   - **RF:** RF-2, RF-5, RF-8
   - **Depende de:** G2
   - **Hecho cuando:** una operacion de esquema simulada que falla dentro de una transaccion controlada deja sin cambios el estado observado antes de la operacion y la excepcion llega a la capa de prueba.
 
-- [ ] **G4. Añadir prueba de aislamiento de conexion del harness** (~20 min)
+- [x] **G4. Añadir prueba de aislamiento de conexion del harness** (~20 min)
   - **RF:** RF-6, RF-8
   - **Depende de:** G3
   - **Hecho cuando:** el test verifica que `ENVIRONMENT=testing` usa `DB_TEST_NAME` y `DB_TEST_USER`, y que una configuracion `demo` o `production` no puede ser seleccionada por el harness.
 
-- [ ] **G5. Ejecutar las pruebas focalizadas de schema, repositorios y entorno** (~15 min)
+- [x] **G5. Ejecutar las pruebas focalizadas de schema, repositorios y entorno** (~15 min)
   - **RF:** RF-4, RF-5, RF-6, RF-8
   - **Depende de:** G4
   - **Hecho cuando:** `python3 -m pytest test/test_config_settings.py test/test_hospedaje_repository.py test/test_destino_repository.py -q` termina sin fallos y los skips, si existen, corresponden solo a infraestructura de testing.
 
 ## Bloque H - Preparacion y ejecucion del reset unico
 
-- [ ] **H1. Definir el inventario y preflight del procedimiento unico** (~25 min)
+- [x] **H1. Definir el inventario y preflight del procedimiento unico** (~25 min)
   - **RF:** RF-1, RF-2, RF-5, RF-9
   - **Depende de:** G5
   - **Hecho cuando:** el procedimiento documenta las siete tablas de dominio, valida base/rol de production antes de `BEGIN` y aborta si detecta una tabla publica inesperada o una conexion distinta.
 
-- [ ] **H2. Preparar el procedimiento transaccional sin interfaz publica** (~30 min)
+- [x] **H2. Preparar el procedimiento transaccional sin interfaz publica** (~30 min)
   - **RF:** RF-1, RF-2, RF-3, RF-9
   - **Depende de:** H1
   - **Hecho cuando:** el artefacto operacional ejecuta vaciado, esquema y commit en una unica transaccion, propaga errores con rollback y no contiene backup, retry, restauracion, endpoint ni metodo de repository.
 
-- [ ] **H3. Verificar el camino de error del reset sin usar la BD real** (~25 min)
+- [x] **H3. Verificar el camino de error del reset sin usar la BD real** (~25 min)
   - **RF:** RF-2, RF-9
   - **Depende de:** H2
   - **Hecho cuando:** una prueba controlada provoca un error despues del vaciado simulado y verifica llamadas a rollback, propagacion del error, cero reintentos y cero restauraciones.
 
-- [ ] **H4. Ejecutar el reset unico autorizado sobre la BD real** (~30 min)
+- [x] **H4. Ejecutar el reset unico autorizado sobre la BD real** (~30 min)
   - **RF:** RF-1, RF-2, RF-5, RF-9
   - **Depende de:** H3, F4
   - **Hecho cuando:** el procedimiento termina con resultado exitoso, registra una unica transaccion, aplica el esquema nuevo y no realiza backup, retry, restauracion ni una segunda ejecucion.
 
-- [ ] **H5. Comprobar manualmente que la BD real quedo vacia** (~20 min)
+- [x] **H5. Comprobar manualmente que la BD real quedo vacia** (~20 min)
   - **RF:** RF-3
   - **Depende de:** H4
   - **Hecho cuando:** una consulta individual devuelve `0` filas para `busquedas`, `recomendaciones`, `evaluaciones_ia`, `atracciones`, `hospedajes`, `destinos` y `usuarios`, sin excepciones.

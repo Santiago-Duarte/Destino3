@@ -187,6 +187,14 @@ El procedimiento se retira o se marca como ejecutado al terminar. La ausencia de
 publica se verifica por inspeccion de `src/` y del entry point; una ejecucion posterior queda fuera de esta spec y
 requiere una decision nueva con confirmacion humana.
 
+Operatoria implementada (H4, con `operacion/reset/`): el preflight corre sobre una conexion del rol de
+production (valida base, rol e inventario, sin escrituras) y la transaccion unica corre sobre una conexion
+separada del rol dueño de las tablas (`postgres`), unico con privilegios de `TRUNCATE` y `ALTER TABLE` sobre las
+tablas existentes de `destino3_db`. La transaccion es la implicita de psycopg2 (sin `autocommit`): el vaciado con
+`TRUNCATE ... CASCADE` del inventario y las sentencias de `sql/migrations/002_google_place_id.sql` se confirman
+con un unico `commit()`, y cualquier fallo revierte y propaga. El exito escribe
+`operacion/reset/evidencia_reset.json`, cuya existencia bloquea toda ejecucion posterior (RF-9).
+
 ### 4.4 Demo
 
 `src/demo_integracion.py` conserva el flujo real de SerpAPI/Gemini, pero su primera validacion debe ser el entorno:
