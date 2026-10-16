@@ -1,64 +1,67 @@
 import unittest
+from unittest.mock import patch
 
 from src.config.database import obtener_conexion
 from src.models.destino import Destino
 from src.models.hospedaje import Hospedaje
 from src.models.busqueda import Busqueda
 from src.models.recomendacion import Recomendacion
+from src.repositories import base_repository
 from src.repositories.destino_repository import DestinoRepository
 from src.repositories.hospedaje_repository import HospedajeRepository
 from src.repositories.busqueda_repository import BusquedaRepository
 from src.repositories.recomendacion_repository import RecomendacionRepository
-
-TABLAS = "busquedas, recomendaciones, evaluaciones_ia, hospedajes, destinos, usuarios"
-
+from test.transaction_adapter import ConexionConSavepoint
 
 class BaseDBTestCase(unittest.TestCase):
     """Base de las pruebas que necesitan base de datos de pruebas.
 
-    Vacía las tablas antes y después de cada prueba y se salta toda la clase
-    si no hay conexión, para que la suite nunca dependa de una BD real.
+    Abre una conexión externa por prueba y revierte toda la transacción al
+    terminar. Se salta la clase si no hay conexión disponible.
     """
 
     @classmethod
     def setUpClass(cls):
-        cls.conexion = obtener_conexion()
-        if cls.conexion is None:
-            raise unittest.SkipTest("No se pudo conectar a la base de datos de testing")
-        cls.cursor = cls.conexion.cursor()
-        cls._insertar_usuario_semilla()
         cls.destino_repo = DestinoRepository()
         cls.hospedaje_repo = HospedajeRepository()
 
-    @classmethod
-    def tearDownClass(cls):
-        cls._clean_db()
-        cls.cursor.close()
-        cls.conexion.close()
-
     def setUp(self):
-        self._clean_db()
-        self._insertar_usuario_semilla()
+        self.conexion_externa = obtener_conexion()
+        if self.conexion_externa is None:
+            raise unittest.SkipTest("No se pudo conectar a la base de datos de testing")
+
+        self.conexion = ConexionConSavepoint(self.conexion_externa)
+        self._parche_conexion = patch.object(
+            base_repository,
+            "obtener_conexion",
+            return_value=self.conexion,
+        )
+        self._parche_conexion.start()
+        try:
+            self._insertar_usuario_semilla()
+        except Exception:
+            self._parche_conexion.stop()
+            self.conexion_externa.rollback()
+            self.conexion_externa.close()
+            raise
 
     def tearDown(self):
-        self._clean_db()
+        try:
+            self.conexion_externa.rollback()
+        finally:
+            self._parche_conexion.stop()
+            self.conexion_externa.close()
 
-    @classmethod
-    def _clean_db(cls):
-        with cls.conexion.cursor() as cursor:
-            cursor.execute(f"TRUNCATE {TABLAS} RESTART IDENTITY CASCADE")
-        cls.conexion.commit()
-
-    @classmethod
-    def _insertar_usuario_semilla(cls):
-        cls.cursor.execute(
-            "INSERT INTO usuarios (nombre, apellido, correo, password_hash) "
-            "VALUES ('admin', 'admin', 'admin@admin.com', 'admin') "
-            "ON CONFLICT (correo) DO UPDATE SET nombre = 'admin' "
-            "RETURNING id"
-        )
-        cls.usuario_seed_id = cls.cursor.fetchone()[0]
-        cls.conexion.commit()
+    def _insertar_usuario_semilla(self):
+        with self.conexion.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO usuarios (nombre, apellido, correo, password_hash) "
+                "VALUES ('admin', 'admin', 'admin@admin.com', 'admin') "
+                "ON CONFLICT (correo) DO UPDATE SET nombre = 'admin' "
+                "RETURNING id"
+            )
+            self.usuario_seed_id = cursor.fetchone()[0]
+        self.conexion.commit()
 
     def crear_destino(self, ciudad="Medellin", pais="Colombia"):
         return self.destino_repo.guardar(Destino(ciudad=ciudad, pais=pais))
