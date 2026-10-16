@@ -88,64 +88,69 @@ por esta spec; no requiere confirmacion humana por la decision documentada de sp
 
 ## Bloque E - Harness transaccional de tests
 
-- [ ] **E1. Crear el adaptador de conexion externa con savepoints** (~30 min)
+- [x] **E1. Crear el adaptador de conexion externa con savepoints** (~30 min)
   - **RF:** RF-8
   - **Depende de:** D4
   - **Hecho cuando:** el adaptador expone `commit()`, `rollback()` y `close()` compatibles con psycopg2, pero `commit()` solo recrea el savepoint, `rollback()` vuelve al savepoint y `close()` no cierra la conexion externa.
 
-- [ ] **E2. Integrar una transaccion externa por prueba en `BaseDBTestCase`** (~30 min)
+- [x] **E2. Integrar una transaccion externa por prueba en `BaseDBTestCase`** (~30 min)
   - **RF:** RF-8
   - **Depende de:** E1
   - **Hecho cuando:** `setUp` abre una conexion exclusiva a `destino3_test_db`, `tearDown` revierte y cierra esa conexion, y el harness no ejecuta ningun `TRUNCATE`, `DELETE` masivo, `DROP` ni reinicio de secuencias.
 
-- [ ] **E3. Probar el adaptador con commits, rollbacks y cierres de repositories** (~25 min)
+- [x] **E3. Probar el adaptador con commits, rollbacks y cierres de repositories** (~25 min)
   - **RF:** RF-8
   - **Depende de:** E2
   - **Hecho cuando:** una prueba confirma que una escritura posterior a un `commit()` del repository se revierte al finalizar el test y que un `close()` del repository no impide el rollback externo.
 
-- [ ] **E4. Eliminar la semilla destructiva del harness existente** (~25 min)
+- [x] **E4. Eliminar la semilla destructiva del harness existente** (~25 min)
   - **RF:** RF-8
   - **Depende de:** E3
   - **Hecho cuando:** `test/db_test_case.py` no contiene `TRUNCATE`, `DELETE`, `DROP`, `RESTART IDENTITY` ni limpieza masiva, y los datos semilla necesarios se crean dentro de la transaccion de cada prueba.
 
-- [ ] **E5. Adaptar las pruebas de destinos y hospedajes al rollback** (~30 min)
+- [x] **E5. Adaptar las pruebas de destinos y hospedajes al rollback** (~30 min)
   - **RF:** RF-4, RF-8
   - **Depende de:** E4
   - **Hecho cuando:** `test/test_destino_repository.py` y `test/test_hospedaje_repository.py` pasan sin limpiar tablas y cada prueba valida solo las filas que crea dentro de su transaccion.
 
-- [ ] **E6. Adaptar las pruebas de busquedas y recomendaciones al rollback** (~30 min)
+- [x] **E6. Adaptar las pruebas de busquedas y recomendaciones al rollback** (~30 min)
   - **RF:** RF-8
   - **Depende de:** E5
   - **Hecho cuando:** `test/test_recomendacion_repository.py` y las pruebas de busqueda relacionadas pasan sin depender de secuencias reiniciadas ni de una BD globalmente vacia.
 
-- [ ] **E7. Adaptar las pruebas de orquestacion e integracion al rollback** (~30 min)
+- [x] **E7. Adaptar las pruebas de orquestacion e integracion al rollback** (~30 min)
   - **RF:** RF-7, RF-8
   - **Depende de:** E6
   - **Hecho cuando:** `test/test_orquestador_evaluacion.py`, `test/test_orquestador_integracion.py` y `test/test_integracion_flujo_completo.py` pasan con respuestas grabadas y sin escribir fuera de `destino3_test_db`.
 
-- [ ] **E8. Auditar que ningun test conserva una operacion destructiva** (~20 min)
-  - **RF:** RF-8, RF-9
+- [x] **E7.1. Adaptar las pruebas del repository de evaluaciones IA al rollback** (~25 min)
+  - **RF:** RF-7, RF-8
   - **Depende de:** E7
+  - **Hecho cuando:** `test/test_evaluacion_ia_repository.py` pasa sin limpiar tablas ni depender de secuencias reiniciadas o de una BD globalmente vacia; cada caso usa identificadores propios y verifica unicamente las filas que crea dentro de su transaccion.
+
+- [x] **E8. Auditar que ningun test conserva una operacion destructiva** (~20 min)
+  - **RF:** RF-8, RF-9
+  - **Depende de:** E7.1
   - **Hecho cuando:** una busqueda de `TRUNCATE|DELETE|DROP|RESTART IDENTITY` en `test/` no encuentra instrucciones SQL destructivas fuera de la documentacion de la tarea.
 
 ## Bloque F - Aplicacion no destructiva a demo y testing
 
-- [ ] **F1. Aplicar el esquema canonico o migracion a `demo_db`** (~20 min)
+- [x] **F1. Aplicar el esquema canonico o migracion a `demo_db`** (~20 min)
   - **RF:** RF-5, RF-7
   - **Depende de:** B4, D1
   - **Hecho cuando:** la aplicacion termina con commit en `demo_db`, existe `google_place_id` con unicidad y ninguna tabla ni fila previa de demo ha sido eliminada o modificada.
 
-- [ ] **F2. Verificar la conservacion de datos de `demo_db`** (~20 min)
+- [x] **F2. Verificar la conservacion de datos de `demo_db`** (~20 min)
   - **RF:** RF-5, RF-7
   - **Depende de:** F1
   - **Hecho cuando:** los conteos y registros testigo capturados antes de F1 coinciden despues de F1 y una insercion duplicada no nula es rechazada por PostgreSQL.
 
-- [ ] **F3. Aplicar el esquema canonico o migracion a `destino3_test_db`** (~20 min)
+- [x] **F3. Aplicar el esquema canonico o migracion a `destino3_test_db`** (~20 min)
   - **RF:** RF-5, RF-8
   - **Depende de:** F2
   - **Hecho cuando:** la aplicacion termina con commit en `destino3_test_db`, existe `google_place_id` con unicidad y no ejecuta reset, borrado masivo ni reinicio de secuencias.
 
-- [ ] **F4. Verificar la conservacion de datos semilla de `destino3_test_db`** (~20 min)
+- [x] **F4. Verificar la conservacion de datos semilla de `destino3_test_db`** (~20 min)
   - **RF:** RF-5, RF-8
   - **Depende de:** F3
   - **Hecho cuando:** los conteos y registros semilla capturados antes de F3 coinciden despues de F3 y varias filas con `google_place_id IS NULL` son validas.
