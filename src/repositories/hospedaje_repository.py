@@ -11,8 +11,11 @@ class HospedajeRepository(BaseRepository):
             Los ids generados, uno por cada hospedaje, en el mismo orden.
         """
         consulta = """
-            INSERT INTO hospedajes (nombre, tipo, precio_noche, calificacion, direccion, url_reserva, destino_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO hospedajes (
+                nombre, tipo, precio_noche, calificacion, direccion,
+                url_reserva, destino_id, google_place_id
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id;
         """
 
@@ -25,7 +28,7 @@ class HospedajeRepository(BaseRepository):
                         hospedaje.nombre, hospedaje.tipo,
                         hospedaje.precio_noche, hospedaje.calificacion,
                         hospedaje.direccion, hospedaje.url_reserva,
-                        hospedaje.destino_id
+                        hospedaje.destino_id, hospedaje.google_place_id
                     )
                 )
                 ids.append(cursor.fetchone()[0])
@@ -36,7 +39,8 @@ class HospedajeRepository(BaseRepository):
             cursor.execute(
                 """
                 SELECT id, nombre, tipo, precio_noche, calificacion,
-                direccion, url_reserva, destino_id FROM hospedajes
+                direccion, url_reserva, destino_id, google_place_id
+                FROM hospedajes
                 WHERE destino_id = %s;
                 """,
                 (destino_id,),
@@ -50,7 +54,8 @@ class HospedajeRepository(BaseRepository):
                     calificacion=fila[4],
                     direccion=fila[5],
                     url_reserva=fila[6],
-                    destino_id=fila[7]
+                    destino_id=fila[7],
+                    google_place_id=fila[8]
                 )
                 for fila in cursor.fetchall()
             ]

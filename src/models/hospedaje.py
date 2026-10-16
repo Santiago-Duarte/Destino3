@@ -12,6 +12,7 @@ class Hospedaje:
             url_reserva: str | None,
             destino_id: int,
             id: int | None = None,
+            google_place_id: str | None = None,
     ) -> None:
         self.nombre = nombre
         self.tipo = tipo
@@ -21,3 +22,4 @@ class Hospedaje:
         self.url_reserva = url_reserva
         self.destino_id = destino_id
         self.id = id
+        self.google_place_id = google_place_id
