@@ -32,56 +32,56 @@ por esta spec; no requiere confirmacion humana por la decision documentada de sp
 
 ## Bloque B - Esquema canonico y migracion
 
-- [ ] **B1. Añadir `google_place_id` al esquema canonico** (~25 min)
+- [x] **B1. Añadir `google_place_id` al esquema canonico** (~25 min)
   - **RF:** RF-4, RF-5
   - **Depende de:** A4
   - **Hecho cuando:** `sql/schema.sql` define `hospedajes.google_place_id` como columna nullable y una restriccion o indice unico con nombre estable, sin `NOT NULL` ni `ON CONFLICT`.
 
-- [ ] **B2. Crear la migracion aditiva para bases existentes** (~25 min)
+- [x] **B2. Crear la migracion aditiva para bases existentes** (~25 min)
   - **RF:** RF-4, RF-5
   - **Depende de:** B1
   - **Hecho cuando:** existe `sql/migrations/002_google_place_id.sql`, contiene solo la adicion de la columna y la unicidad, y no contiene `TRUNCATE`, `DELETE`, `DROP DATABASE` ni cambios de datos.
 
-- [ ] **B3. Verificar la idempotencia de la migracion** (~20 min)
+- [x] **B3. Verificar la idempotencia de la migracion** (~20 min)
   - **RF:** RF-4, RF-5
   - **Depende de:** B2
   - **Hecho cuando:** la migracion aplicada dos veces a una base no productiva termina sin error en la segunda ejecucion y la segunda ejecucion no cambia las columnas ni los indices observados.
 
-- [ ] **B4. Verificar rollback ante identificadores duplicados durante la migracion** (~25 min)
+- [x] **B4. Verificar rollback ante identificadores duplicados durante la migracion** (~25 min)
   - **RF:** RF-2, RF-4, RF-5
   - **Depende de:** B3
   - **Hecho cuando:** una base no productiva con el esquema anterior y dos filas con el mismo identificador rechaza la migracion y conserva sin cambios sus filas y su esquema previo.
 
 ## Bloque C - Modelo y persistencia del identificador
 
-- [ ] **C1. Extender el modelo de dominio `Hospedaje`** (~15 min)
+- [x] **C1. Extender el modelo de dominio `Hospedaje`** (~15 min)
   - **RF:** RF-4
   - **Depende de:** B4
   - **Hecho cuando:** `Hospedaje` acepta `google_place_id` opcional, conserva `None` y conserva un texto no nulo en una instancia sin introducir un `id_temporal` persistente.
 
-- [ ] **C2. Persistir y recuperar `google_place_id` en el repository** (~25 min)
+- [x] **C2. Persistir y recuperar `google_place_id` en el repository** (~25 min)
   - **RF:** RF-4, RF-7
   - **Depende de:** C1
   - **Hecho cuando:** `HospedajeRepository` inserta y selecciona `google_place_id`, no ejecuta un pre-chequeo de unicidad ni un upsert, y todos los errores SQL se propagan.
 
 ## Bloque D - Conexion estricta y guarda de la demo
 
-- [ ] **D1. Implementar el mapa estricto de conexiones por entorno** (~30 min)
+- [x] **D1. Implementar el mapa estricto de conexiones por entorno** (~30 min)
   - **RF:** RF-6, RF-7, RF-8
   - **Depende de:** C2
   - **Hecho cuando:** `src/config/database.py` selecciona exactamente `testing -> destino3_test_db`, `demo -> demo_db` y `production -> destino3_db`, y un entorno distinto lanza un error antes de llamar a `psycopg2.connect`.
 
-- [ ] **D2. Probar el selector de entorno y la ausencia de fallback** (~25 min)
+- [x] **D2. Probar el selector de entorno y la ausencia de fallback** (~25 min)
   - **RF:** RF-6, RF-7, RF-8
   - **Depende de:** D1
   - **Hecho cuando:** existen pruebas que verifican los tres tripletes de base/usuario/password, un entorno desconocido y una variable obligatoria ausente, y ninguna de las dos ultimas intenta otra base.
 
-- [ ] **D3. Añadir la guarda `ENVIRONMENT=demo` al entry point de demo** (~25 min)
+- [x] **D3. Añadir la guarda `ENVIRONMENT=demo` al entry point de demo** (~25 min)
   - **RF:** RF-6, RF-7
   - **Depende de:** D2
   - **Hecho cuando:** `src/demo_integracion.py` rechaza cualquier entorno distinto de `demo` antes de leer claves, construir el orquestador, abrir conexion o llamar a un proveedor, y retorna codigo distinto de cero.
 
-- [ ] **D4. Probar la guarda de la demo con proveedores y conexion simulados** (~20 min)
+- [x] **D4. Probar la guarda de la demo con proveedores y conexion simulados** (~20 min)
   - **RF:** RF-6, RF-7
   - **Depende de:** D3
   - **Hecho cuando:** la prueba del entorno invalido verifica cero llamadas a conexion, SerpAPI, Gemini y orquestador, y la prueba de `demo` verifica el nombre `demo_db` en los parametros de conexion.

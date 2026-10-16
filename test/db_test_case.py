@@ -72,6 +72,7 @@ class BaseDBTestCase(unittest.TestCase):
             direccion="Calle 1",
             url_reserva="https://www.hotel1.com",
             destino_id=destino_id,
+            google_place_id=None,
         )
         valores.update(campos)
         return self.hospedaje_repo.guardar_lote([Hospedaje(**valores)])[0]

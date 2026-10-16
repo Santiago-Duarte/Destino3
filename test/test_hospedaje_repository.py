@@ -25,6 +25,18 @@ class TestHospedajeRepository(BaseDBTestCase):
         self.assertEqual(hospedaje.url_reserva, "https://www.hotel1.com")
         self.assertEqual(hospedaje.destino_id, destino_id)
 
+    def test_guardar_y_obtener_hospedaje_con_google_place_id(self):
+        destino_id = self.crear_destino()
+        hospedaje_id = self.crear_hospedaje(
+            destino_id,
+            google_place_id="ChIJ123",
+        )
+
+        hospedajes = self.hospedaje_repo.obtener_por_destino(destino_id)
+
+        self.assertEqual(hospedajes[0].id, hospedaje_id)
+        self.assertEqual(hospedajes[0].google_place_id, "ChIJ123")
+
     def test_obtener_hospedajes_sin_registros(self):
         destino_id = self.crear_destino()
 
@@ -51,6 +63,7 @@ class TestHospedajeRepository(BaseDBTestCase):
             direccion=None,
             url_reserva=None,
             destino_id=destino_id,
+            google_place_id=None,
         )
 
         ids = self.hospedaje_repo.guardar_lote([hospedaje])
@@ -64,6 +77,7 @@ class TestHospedajeRepository(BaseDBTestCase):
         self.assertIsNone(hospedajes[0].calificacion)
         self.assertIsNone(hospedajes[0].direccion)
         self.assertIsNone(hospedajes[0].url_reserva)
+        self.assertIsNone(hospedajes[0].google_place_id)
 
     def test_guardar_lote_con_destino_inexistente_lanza_error(self):
         destino_id = self.crear_destino()
@@ -75,6 +89,7 @@ class TestHospedajeRepository(BaseDBTestCase):
             direccion="Calle 1",
             url_reserva="https://www.hotel1.com",
             destino_id=999999,
+            google_place_id="ChIJ-destino-inexistente",
         )
 
         with self.assertRaises(psycopg2.IntegrityError):
@@ -91,6 +106,7 @@ class TestHospedajeRepository(BaseDBTestCase):
             direccion="Calle 1",
             url_reserva="https://www.hotel1.com",
             destino_id=None,
+            google_place_id="ChIJ-sin-destino",
         )
 
         with self.assertRaises(psycopg2.IntegrityError):
@@ -119,6 +135,7 @@ class TestGuardarLoteHospedajes(BaseDBTestCase):
                 direccion="Calle 1",
                 url_reserva=f"https://www.hotel{i}.com",
                 destino_id=destino_id,
+                google_place_id=f"ChIJ-lote-{i}",
             )
             for i in range(1, cantidad + 1)
         ]
