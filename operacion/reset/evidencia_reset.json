@@ -1,0 +1,15 @@
+{
+  "fecha": "2026-10-16T22:15:58.556267+00:00",
+  "base": "destino3_db",
+  "transaccion": "unica",
+  "tablas": [
+    "busquedas",
+    "recomendaciones",
+    "evaluaciones_ia",
+    "atracciones",
+    "hospedajes",
+    "destinos",
+    "usuarios"
+  ],
+  "esquema": "002_google_place_id.sql"
+}
