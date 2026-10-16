@@ -2,9 +2,7 @@
 
 import argparse
 import logging
-
-from src.config import settings
-from src.orchestrator.orquestador_integracion import OrquestadorIntegracion
+import os
 
 
 logger = logging.getLogger(__name__)
@@ -31,6 +29,13 @@ def crear_parser() -> argparse.ArgumentParser:
 
 def ejecutar_demo(argumentos: argparse.Namespace) -> int:
     """Ejecuta el flujo real y registra hospedajes y evaluaciones persistidos."""
+    if os.getenv("ENVIRONMENT") != "demo":
+        logger.error("El demo de integración requiere ENVIRONMENT=demo.")
+        return 1
+
+    from src.config import settings
+    from src.orchestrator.orquestador_integracion import OrquestadorIntegracion
+
     if not settings.SERPAPI_KEY or not settings.GEMINI_API_KEY:
         logger.warning(
             "Faltan credenciales de proveedores; configure las variables de entorno requeridas."
