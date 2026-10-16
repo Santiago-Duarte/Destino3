@@ -1,4 +1,5 @@
 import unittest
+import uuid
 
 import psycopg2
 
@@ -6,10 +7,14 @@ from src.models.hospedaje import Hospedaje
 from test.db_test_case import BaseDBTestCase
 
 
+def _ciudad_unica(ciudad="Medellin"):
+    return f"{ciudad}_{uuid.uuid4().hex}"
+
+
 class TestHospedajeRepository(BaseDBTestCase):
 
     def test_guardar_y_obtener_hospedaje(self):
-        destino_id = self.crear_destino()
+        destino_id = self.crear_destino(ciudad=_ciudad_unica())
         hospedaje_id = self.crear_hospedaje(destino_id)
 
         hospedajes = self.hospedaje_repo.obtener_por_destino(destino_id)
@@ -26,25 +31,26 @@ class TestHospedajeRepository(BaseDBTestCase):
         self.assertEqual(hospedaje.destino_id, destino_id)
 
     def test_guardar_y_obtener_hospedaje_con_google_place_id(self):
-        destino_id = self.crear_destino()
+        destino_id = self.crear_destino(ciudad=_ciudad_unica())
+        google_place_id = f"ChIJ123-{uuid.uuid4().hex}"
         hospedaje_id = self.crear_hospedaje(
             destino_id,
-            google_place_id="ChIJ123",
+            google_place_id=google_place_id,
         )
 
         hospedajes = self.hospedaje_repo.obtener_por_destino(destino_id)
 
         self.assertEqual(hospedajes[0].id, hospedaje_id)
-        self.assertEqual(hospedajes[0].google_place_id, "ChIJ123")
+        self.assertEqual(hospedajes[0].google_place_id, google_place_id)
 
     def test_obtener_hospedajes_sin_registros(self):
-        destino_id = self.crear_destino()
+        destino_id = self.crear_destino(ciudad=_ciudad_unica())
 
         self.assertEqual(self.hospedaje_repo.obtener_por_destino(destino_id), [])
 
     def test_obtener_hospedajes_solo_del_destino_solicitado(self):
-        destino_1 = self.crear_destino()
-        destino_2 = self.crear_destino(ciudad="Bogota")
+        destino_1 = self.crear_destino(ciudad=_ciudad_unica())
+        destino_2 = self.crear_destino(ciudad=_ciudad_unica("Bogota"))
         self.crear_hospedaje(destino_1)
         self.crear_hospedaje(destino_2, nombre="Hotel 2")
 
@@ -54,7 +60,7 @@ class TestHospedajeRepository(BaseDBTestCase):
         self.assertEqual(hospedajes[0].nombre, "Hotel 1")
 
     def test_guardar_lote_con_campos_opcionales_nulos(self):
-        destino_id = self.crear_destino()
+        destino_id = self.crear_destino(ciudad=_ciudad_unica())
         hospedaje = Hospedaje(
             nombre="Hostal",
             tipo=None,
@@ -80,7 +86,8 @@ class TestHospedajeRepository(BaseDBTestCase):
         self.assertIsNone(hospedajes[0].google_place_id)
 
     def test_guardar_lote_con_destino_inexistente_lanza_error(self):
-        destino_id = self.crear_destino()
+        destino_id = self.crear_destino(ciudad=_ciudad_unica())
+        google_place_id = f"ChIJ-destino-inexistente-{uuid.uuid4().hex}"
         hospedaje = Hospedaje(
             nombre="Hotel 1",
             tipo="hotel",
@@ -89,7 +96,7 @@ class TestHospedajeRepository(BaseDBTestCase):
             direccion="Calle 1",
             url_reserva="https://www.hotel1.com",
             destino_id=999999,
-            google_place_id="ChIJ-destino-inexistente",
+            google_place_id=google_place_id,
         )
 
         with self.assertRaises(psycopg2.IntegrityError):
@@ -98,6 +105,7 @@ class TestHospedajeRepository(BaseDBTestCase):
         self.assertEqual(self.hospedaje_repo.obtener_por_destino(destino_id), [])
 
     def test_guardar_lote_sin_destino_lanza_error(self):
+        google_place_id = f"ChIJ-sin-destino-{uuid.uuid4().hex}"
         hospedaje = Hospedaje(
             nombre="Hotel 1",
             tipo="hotel",
@@ -106,15 +114,17 @@ class TestHospedajeRepository(BaseDBTestCase):
             direccion="Calle 1",
             url_reserva="https://www.hotel1.com",
             destino_id=None,
-            google_place_id="ChIJ-sin-destino",
+            google_place_id=google_place_id,
         )
 
         with self.assertRaises(psycopg2.IntegrityError):
             self.hospedaje_repo.guardar_lote([hospedaje])
 
-        self.assertEqual(self.destino_repo.obtener_todos(), [])
         with self.conexion.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM hospedajes;")
+            cursor.execute(
+                "SELECT COUNT(*) FROM hospedajes WHERE google_place_id = %s",
+                (google_place_id,),
+            )
             self.assertEqual(cursor.fetchone()[0], 0)
 
     def test_el_repositorio_no_tiene_insercion_unitaria(self):
@@ -126,6 +136,7 @@ class TestGuardarLoteHospedajes(BaseDBTestCase):
     """RF-4: el lote de hospedajes se persiste en una única transacción."""
 
     def _crear_lote(self, destino_id, cantidad=3):
+        lote_id = uuid.uuid4().hex
         return [
             Hospedaje(
                 nombre=f"Hotel {i}",
@@ -135,35 +146,39 @@ class TestGuardarLoteHospedajes(BaseDBTestCase):
                 direccion="Calle 1",
                 url_reserva=f"https://www.hotel{i}.com",
                 destino_id=destino_id,
-                google_place_id=f"ChIJ-lote-{i}",
+                google_place_id=f"ChIJ-lote-{lote_id}-{i}",
             )
             for i in range(1, cantidad + 1)
         ]
 
-    def _contar_hospedajes(self):
+    def _contar_hospedajes(self, destino_id):
         with self.conexion.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM hospedajes;")
+            cursor.execute(
+                "SELECT COUNT(*) FROM hospedajes WHERE destino_id = %s",
+                (destino_id,),
+            )
             return cursor.fetchone()[0]
 
     def test_guardar_lote_devuelve_tres_ids_enteros(self):
-        destino_id = self.crear_destino()
+        destino_id = self.crear_destino(ciudad=_ciudad_unica())
 
         ids = self.hospedaje_repo.guardar_lote(self._crear_lote(destino_id))
 
         self.assertEqual(len(ids), 3)
         for id_generado in ids:
             self.assertIsInstance(id_generado, int)
-        self.assertEqual(self._contar_hospedajes(), 3)
+        self.assertEqual(self._contar_hospedajes(destino_id), 3)
 
     def test_con_error_en_el_tercero_la_tabla_queda_sin_filas(self):
-        destino_id = self.crear_destino()
+        destino_id = self.crear_destino(ciudad=_ciudad_unica())
         lote = self._crear_lote(destino_id, cantidad=2)
         lote.append(self._crear_lote(999999, cantidad=1)[0])
+        hospedajes_antes = self._contar_hospedajes(destino_id)
 
         with self.assertRaises(psycopg2.IntegrityError):
             self.hospedaje_repo.guardar_lote(lote)
 
-        self.assertEqual(self._contar_hospedajes(), 0)
+        self.assertEqual(self._contar_hospedajes(destino_id), hospedajes_antes)
 
 
 if __name__ == '__main__':

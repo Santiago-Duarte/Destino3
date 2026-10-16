@@ -1,4 +1,5 @@
 import unittest
+import uuid
 from pathlib import Path
 
 import psycopg2
@@ -10,6 +11,10 @@ from src.repositories.evaluacion_ia_repository import EvaluacionIARepository
 from test.db_test_case import BaseDBTestCase
 
 
+def _ciudad_unica():
+    return f"Medellin_{uuid.uuid4().hex}"
+
+
 class TestEvaluacionIARepository(BaseDBTestCase):
 
     def setUp(self):
@@ -17,7 +22,7 @@ class TestEvaluacionIARepository(BaseDBTestCase):
         self.repo = EvaluacionIARepository()
 
     def test_guardar_y_recuperar_evaluacion(self):
-        destino_id = self.crear_destino()
+        destino_id = self.crear_destino(ciudad=_ciudad_unica())
         hospedaje_id = self.crear_hospedaje(destino_id)
 
         evaluacion = Evaluacion(
@@ -39,7 +44,7 @@ class TestEvaluacionIARepository(BaseDBTestCase):
         self.assertEqual(recuperada.score_calidad_precio, 8)
 
     def test_duplicar_evaluacion_mismo_hospedaje_falla(self):
-        destino_id = self.crear_destino()
+        destino_id = self.crear_destino(ciudad=_ciudad_unica())
         hospedaje_id = self.crear_hospedaje(destino_id)
 
         evaluacion = Evaluacion(
@@ -83,13 +88,19 @@ class TestGuardarLoteEvaluaciones(BaseDBTestCase):
             for i, hospedaje_id in enumerate(hospedaje_ids, start=1)
         ]
 
-    def _contar_evaluaciones(self):
+    def _contar_evaluaciones(self, hospedaje_id=None):
         with self.conexion.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM evaluaciones_ia;")
+            if hospedaje_id is None:
+                cursor.execute("SELECT COUNT(*) FROM evaluaciones_ia;")
+            else:
+                cursor.execute(
+                    "SELECT COUNT(*) FROM evaluaciones_ia WHERE hospedaje_id = %s;",
+                    (hospedaje_id,),
+                )
             return cursor.fetchone()[0]
 
     def test_guardar_lote_devuelve_ids_enteros_asociados_a_su_hospedaje(self):
-        destino_id = self.crear_destino()
+        destino_id = self.crear_destino(ciudad=_ciudad_unica())
         hospedaje_1 = self.crear_hospedaje(destino_id, nombre="Hotel A")
         hospedaje_2 = self.crear_hospedaje(destino_id, nombre="Hotel B")
 
@@ -106,20 +117,22 @@ class TestGuardarLoteEvaluaciones(BaseDBTestCase):
         self.assertEqual(recuperada_1.score_calidad_precio, 6)
         self.assertEqual(recuperada_2.id, ids[1])
         self.assertEqual(recuperada_2.hospedaje_id, hospedaje_2)
-        self.assertEqual(self._contar_evaluaciones(), 2)
+        self.assertEqual(self._contar_evaluaciones(hospedaje_1), 1)
+        self.assertEqual(self._contar_evaluaciones(hospedaje_2), 1)
 
     def test_con_error_en_el_ultimo_la_tabla_queda_sin_filas_parciales(self):
-        destino_id = self.crear_destino()
+        destino_id = self.crear_destino(ciudad=_ciudad_unica())
         hospedaje_1 = self.crear_hospedaje(destino_id, nombre="Hotel A")
         lote = self._crear_lote([hospedaje_1, hospedaje_1])
+        evaluaciones_antes = self._contar_evaluaciones(hospedaje_1)
 
         with self.assertRaises(errors.UniqueViolation):
             self.repo.guardar_lote(lote)
 
-        self.assertEqual(self._contar_evaluaciones(), 0)
+        self.assertEqual(self._contar_evaluaciones(hospedaje_1), evaluaciones_antes)
 
     def test_con_hospedaje_inexistente_la_tabla_queda_sin_filas(self):
-        destino_id = self.crear_destino()
+        destino_id = self.crear_destino(ciudad=_ciudad_unica())
         hospedaje_1 = self.crear_hospedaje(destino_id, nombre="Hotel A")
         lote = self._crear_lote([hospedaje_1])
         lote.append(
@@ -131,15 +144,18 @@ class TestGuardarLoteEvaluaciones(BaseDBTestCase):
                 hospedaje_id=999999,
             )
         )
+        evaluaciones_antes = self._contar_evaluaciones(hospedaje_1)
 
         with self.assertRaises(psycopg2.IntegrityError):
             self.repo.guardar_lote(lote)
 
-        self.assertEqual(self._contar_evaluaciones(), 0)
+        self.assertEqual(self._contar_evaluaciones(hospedaje_1), evaluaciones_antes)
 
     def test_lote_vacio_no_inserta_nada(self):
+        evaluaciones_antes = self._contar_evaluaciones()
+
         self.assertEqual(self.repo.guardar_lote([]), [])
-        self.assertEqual(self._contar_evaluaciones(), 0)
+        self.assertEqual(self._contar_evaluaciones(), evaluaciones_antes)
 
     def test_los_repositories_no_mencionan_id_temporal(self):
         """C2: id_temporal jamás llega a la capa de SQL (constitución #4)."""

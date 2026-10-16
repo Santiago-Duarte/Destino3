@@ -1,4 +1,5 @@
 import unittest
+import uuid
 from unittest.mock import Mock
 
 from src.models.evaluacion_ia import EvaluacionIAOutput, LoteEvaluacionesIA
@@ -11,7 +12,8 @@ from test.db_test_case import BaseDBTestCase
 class TestIntegracionFlujoCompleto(BaseDBTestCase):
 
     def test_busqueda_persistencia_evaluacion_y_persistencia_final(self):
-        destino_id = self.crear_destino()
+        ciudad = f"Medellin_{uuid.uuid4().hex}"
+        destino_id = self.crear_destino(ciudad=ciudad)
         hospedajes = [
             Hospedaje(
                 nombre="Hotel Simulado",
@@ -43,7 +45,7 @@ class TestIntegracionFlujoCompleto(BaseDBTestCase):
             evaluaciones_repo=EvaluacionIARepository(),
         )
 
-        resultado = orquestador.ejecutar("Medellin", "Colombia", 100, "")
+        resultado = orquestador.ejecutar(ciudad, "Colombia", 100, "")
         evaluaciones = orquestador.persistir_evaluaciones(resultado)
 
         evaluacion_persistida = EvaluacionIARepository().obtener_por_hospedaje(

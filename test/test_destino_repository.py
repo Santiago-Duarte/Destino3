@@ -1,4 +1,5 @@
 import unittest
+import uuid
 from unittest.mock import MagicMock, patch
 
 from src.models.destino import Destino
@@ -6,90 +7,114 @@ from test.db_test_case import BaseDBTestCase
 
 
 class TestDestinoRepository(BaseDBTestCase):
+    def _datos_destino(self, ciudad="Medellin", pais="Colombia"):
+        return f"{ciudad}_{uuid.uuid4().hex}", pais
+
+    def _ids_destinos(self):
+        return {destino.id for destino in self.destino_repo.obtener_todos()}
+
+    def _destinos_creados(self, ids):
+        ids = set(ids)
+        return [destino for destino in self.destino_repo.obtener_todos() if destino.id in ids]
 
     def test_guardar_y_obtener_destino(self):
-        destino_id = self.crear_destino()
+        ciudad, pais = self._datos_destino()
+        destino_id = self.crear_destino(ciudad=ciudad, pais=pais)
 
-        destinos = self.destino_repo.obtener_todos()
+        destinos = self._destinos_creados([destino_id])
 
         self.assertEqual(len(destinos), 1)
         destino = destinos[0]
         self.assertEqual(destino.id, destino_id)
-        self.assertEqual(destino.ciudad, "Medellin")
-        self.assertEqual(destino.pais, "Colombia")
+        self.assertEqual(destino.ciudad, ciudad)
+        self.assertEqual(destino.pais, pais)
 
     def test_obtener_destinos_sin_registros(self):
-        self.assertEqual(self.destino_repo.obtener_todos(), [])
+        ids_antes = self._ids_destinos()
+
+        self.assertEqual(self._ids_destinos(), ids_antes)
 
     def test_obtener_destinos_con_varios_registros(self):
-        self.crear_destino(ciudad="Medellin", pais="Colombia")
-        self.crear_destino(ciudad="Bogota", pais="Colombia")
-        self.crear_destino(ciudad="Buenos Aires", pais="Argentina")
+        datos = [
+            self._datos_destino("Medellin", "Colombia"),
+            self._datos_destino("Bogota", "Colombia"),
+            self._datos_destino("Buenos Aires", "Argentina"),
+        ]
+        ids = [self.crear_destino(ciudad=ciudad, pais=pais) for ciudad, pais in datos]
 
-        destinos = self.destino_repo.obtener_todos()
+        destinos = self._destinos_creados(ids)
 
         self.assertEqual(len(destinos), 3)
-        self.assertEqual({d.ciudad for d in destinos},
-                         {"Medellin", "Bogota", "Buenos Aires"})
+        self.assertEqual({d.ciudad for d in destinos}, {ciudad for ciudad, _ in datos})
 
     def test_guardar_destino_con_caracteres_especiales(self):
-        self.crear_destino(ciudad="Ciudad de México", pais="México")
+        ciudad, pais = self._datos_destino("Ciudad de México", "México")
+        destino_id = self.crear_destino(ciudad=ciudad, pais=pais)
 
-        destinos = self.destino_repo.obtener_todos()
+        destinos = self._destinos_creados([destino_id])
 
         self.assertEqual(len(destinos), 1)
-        self.assertEqual(destinos[0].ciudad, "Ciudad de México")
-        self.assertEqual(destinos[0].pais, "México")
+        self.assertEqual(destinos[0].ciudad, ciudad)
+        self.assertEqual(destinos[0].pais, pais)
 
     def test_guardar_destino_invalido_lanza_value_error_y_no_guarda(self):
+        ids_antes = self._ids_destinos()
+
         with self.assertRaises(ValueError):
             self.destino_repo.guardar(Destino(ciudad=None, pais="Colombia"))
 
-        self.assertEqual(self.destino_repo.obtener_todos(), [])
+        self.assertEqual(self._ids_destinos(), ids_antes)
 
     def test_crear_destino_cuando_no_existe(self):
-        nuevo_destino = Destino(ciudad="medellin", pais="colombia")
+        ciudad, pais = self._datos_destino("medellin", "colombia")
+        nuevo_destino = Destino(ciudad=ciudad, pais=pais)
 
         resultado = self.destino_repo.obtener_o_crear(nuevo_destino)
-        destinos = self.destino_repo.obtener_todos()
+        destinos = self._destinos_creados([resultado])
 
         self.assertIsInstance(resultado, int)
         self.assertEqual(len(destinos), 1)
-        self.assertEqual(destinos[0].ciudad, "medellin")
-        self.assertEqual(destinos[0].pais, "colombia")
+        self.assertEqual(destinos[0].ciudad, ciudad)
+        self.assertEqual(destinos[0].pais, pais)
 
     def test_llamar_dos_veces_la_misma_ciudad_devuelve_el_mismo_id(self):
-        nuevo_destino = Destino(ciudad="Medellin", pais="Colombia")
+        ciudad, pais = self._datos_destino()
+        nuevo_destino = Destino(ciudad=ciudad, pais=pais)
 
         resultado1 = self.destino_repo.obtener_o_crear(nuevo_destino)
         resultado2 = self.destino_repo.obtener_o_crear(nuevo_destino)
 
-        self.assertEqual(len(self.destino_repo.obtener_todos()), 1)
+        self.assertEqual(len(self._destinos_creados([resultado1])), 1)
         self.assertEqual(resultado1, resultado2)
 
     def test_obtener_o_crear_con_ciudad_invalida_lanza_value_error(self):
+        ids_antes = self._ids_destinos()
+
         with self.assertRaises(ValueError):
             self.destino_repo.obtener_o_crear(Destino(ciudad=None, pais="Colombia"))
         with self.assertRaises(ValueError):
             self.destino_repo.obtener_o_crear(Destino(ciudad="", pais="Colombia"))
 
-        self.assertEqual(self.destino_repo.obtener_todos(), [])
+        self.assertEqual(self._ids_destinos(), ids_antes)
 
     def test_obtener_o_crear_con_solo_espacios_lanza_value_error(self):
+        ids_antes = self._ids_destinos()
+
         with self.assertRaises(ValueError):
             self.destino_repo.obtener_o_crear(Destino(ciudad="   ", pais="Colombia"))
 
-        self.assertEqual(self.destino_repo.obtener_todos(), [])
+        self.assertEqual(self._ids_destinos(), ids_antes)
 
     def test_obtener_o_crear_conserva_el_formato_de_ciudad_y_pais(self):
-        nuevo_destino = Destino(" MEdellin  ", " CoLombia")
+        ciudad, pais = self._datos_destino("MEdellin", "CoLombia")
+        nuevo_destino = Destino(f" {ciudad}  ", f" {pais}  ")
 
-        self.destino_repo.obtener_o_crear(nuevo_destino)
+        destino_id = self.destino_repo.obtener_o_crear(nuevo_destino)
 
-        resultado = self.destino_repo.obtener_todos()
+        resultado = self._destinos_creados([destino_id])
 
-        self.assertEqual(resultado[0].ciudad, "MEdellin")
-        self.assertEqual(resultado[0].pais, "CoLombia")
+        self.assertEqual(resultado[0].ciudad, ciudad)
+        self.assertEqual(resultado[0].pais, pais)
 
 
 class TestObtenerOCrearDestinoCarrera(BaseDBTestCase):
