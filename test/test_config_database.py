@@ -1,5 +1,9 @@
 import os
+import subprocess
+import sys
+import textwrap
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from src.config import database
@@ -66,6 +70,50 @@ class TestObtenerConexion(unittest.TestCase):
                     database.obtener_conexion()
 
         conectar.assert_not_called()
+
+    def test_harness_fuerza_testing_y_no_selecciona_demo_ni_production(self):
+        raiz = Path(__file__).parents[1]
+        codigo = textwrap.dedent("""
+            import os
+            from unittest.mock import patch
+            
+            __import__("test")
+            from src.config import database
+            
+            with patch.object(database.psycopg2, "connect") as conectar:
+                database.obtener_conexion()
+            
+            if os.getenv("ENVIRONMENT") != "testing":
+                raise AssertionError("El paquete de tests no fijó ENVIRONMENT=testing")
+            conectar.assert_called_once_with(
+                host="localhost",
+                port="5432",
+                database="destino3_test_db",
+                user="destino3_testing",
+                password="password-testing",
+            )
+            print("testing")
+        """)
+
+        for entorno_inicial in ("testing", "demo", "production"):
+            with self.subTest(entorno_inicial=entorno_inicial):
+                variables = {
+                    "PATH": os.environ.get("PATH", ""),
+                    "HOME": os.environ.get("HOME", ""),
+                    "PYTHONPATH": str(raiz),
+                    **self._variables_entorno(entorno_inicial),
+                }
+                resultado = subprocess.run(
+                    [sys.executable, "-c", codigo],
+                    cwd=raiz,
+                    env=variables,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+
+                self.assertEqual(resultado.returncode, 0, msg=resultado.stderr)
+                self.assertEqual(resultado.stdout.strip(), "testing")
 
 
 if __name__ == "__main__":

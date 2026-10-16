@@ -43,6 +43,58 @@ class TestHospedajeRepository(BaseDBTestCase):
         self.assertEqual(hospedajes[0].id, hospedaje_id)
         self.assertEqual(hospedajes[0].google_place_id, google_place_id)
 
+    def test_persistir_dos_hospedajes_sin_google_place_id(self):
+        destino_id = self.crear_destino(ciudad=_ciudad_unica())
+        hospedajes = [
+            Hospedaje(
+                nombre=f"Hospedaje sin identificador {indice}",
+                tipo="hotel",
+                precio_noche=100,
+                calificacion=4,
+                direccion="Calle de prueba",
+                url_reserva=None,
+                destino_id=destino_id,
+                google_place_id=None,
+            )
+            for indice in range(2)
+        ]
+
+        ids = self.hospedaje_repo.guardar_lote(hospedajes)
+        persistidos = self.hospedaje_repo.obtener_por_destino(destino_id)
+
+        self.assertEqual(len(ids), 2)
+        self.assertEqual({hospedaje.id for hospedaje in persistidos}, set(ids))
+        self.assertTrue(all(hospedaje.google_place_id is None for hospedaje in persistidos))
+
+    def test_google_place_id_duplicado_falla_y_no_deja_filas_parciales(self):
+        destino_id = self.crear_destino(ciudad=_ciudad_unica())
+        google_place_id = f"ChIJ-duplicado-{uuid.uuid4().hex}"
+        hospedajes = [
+            Hospedaje(
+                nombre=f"Hospedaje duplicado {indice}",
+                tipo="hotel",
+                precio_noche=100,
+                calificacion=4,
+                direccion="Calle de prueba",
+                url_reserva=None,
+                destino_id=destino_id,
+                google_place_id=google_place_id,
+            )
+            for indice in range(2)
+        ]
+
+        with self.assertRaises(psycopg2.IntegrityError):
+            self.hospedaje_repo.guardar_lote(hospedajes)
+
+        with self.conexion.cursor() as cursor:
+            cursor.execute(
+                "SELECT COUNT(*) FROM hospedajes WHERE google_place_id = %s",
+                (google_place_id,),
+            )
+            cantidad_persistida = cursor.fetchone()[0]
+
+        self.assertEqual(cantidad_persistida, 0)
+
     def test_obtener_hospedajes_sin_registros(self):
         destino_id = self.crear_destino(ciudad=_ciudad_unica())
 
