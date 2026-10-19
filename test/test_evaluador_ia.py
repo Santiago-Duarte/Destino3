@@ -2,7 +2,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from src.exceptions.evaluacion_ia import EvaluacionIALoteError
+from src.exceptions.Evaluacion_IA_error import EvaluacionIALoteError
 from src.models.hospedaje import Hospedaje
 from src.services.evaluador_ia import EvaluadorIA, seleccionar_candidatos
 

@@ -98,7 +98,7 @@ class TestEvaluacionIAOutput(unittest.TestCase):
 
 
 class TestSinDuplicacion(unittest.TestCase):
-    """El contrato de la IA vive una sola vez, en src/models/evaluacion_ia.py."""
+    """El contrato de la IA vive una sola vez, en src/models/Evaluacion_IA_error.py."""
 
     def test_el_servicio_y_el_orquestador_usan_el_lote_del_dominio(self):
         from src.orchestrator import orquestador_evaluacion

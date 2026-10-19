@@ -4,7 +4,7 @@ from src.models.evaluacion_ia import EvaluacionIAOutput
 class Evaluacion:
     """Entidad de dominio de una evaluación de IA ya persistida.
 
-    Es la contraparte de ``EvaluacionIAOutput`` (``src/models/evaluacion_ia.py``):
+    Es la contraparte de ``EvaluacionIAOutput`` (``src/models/Evaluacion_IA_error.py``):
     mientras ese modelo es el DTO de la respuesta de Gemini que solo vive en
     memoria, esta entidad representa una fila de la tabla ``evaluaciones_ia``.
 
