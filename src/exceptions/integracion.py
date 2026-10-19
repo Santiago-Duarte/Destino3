@@ -1,4 +1,4 @@
-from src.exceptions.base import Destino3Error
+from src.exceptions.Destino3Error import Destino3Error
 
 
 class SerpApiError(Destino3Error):

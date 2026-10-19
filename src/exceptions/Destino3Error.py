@@ -5,4 +5,4 @@ class Destino3Error(Exception):
         self.proveedor = proveedor
         self.operacion = operacion
         self.detalle = detalle
-        super().__init__(f"[{proveedor}] {operacion}: {detalle}")
+        super().__init__(f"Error en el proveedor [{proveedor}] en la operacion: {operacion}: {detalle}")
