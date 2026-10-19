@@ -13,7 +13,7 @@ REST → frontend → despliegue); la fase activa integra las APIs externas.
 
 ## Estructura
 
-- `src/models/` — modelos de dominio (clases simples; solo `evaluacion_ia.py` usa Pydantic).
+- `src/models/` — modelos de dominio (clases simples; solo `Evaluacion_IA_error.py` usa Pydantic).
 - `src/repositories/` — único lugar con SQL crudo (psycopg2).
 - `src/services/` — APIs externas: `buscador_serpapi.py` (SerpAPI), `evaluador_ia.py` (Gemini).
 - `src/orchestrator/` — orquestación del flujo de evaluación.

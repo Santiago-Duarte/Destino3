@@ -341,6 +341,10 @@ harness existente, pero nunca sustituyen PostgreSQL por un mock de persistencia 
 RF-1, RF-3 y RF-9 se mantienen como comprobaciones manuales objetivas sobre la BD real/interfaz, tal como exige la
 spec y como impone el aislamiento de constitucion #7. No se crea un test que se conecte a produccion.
 
+Evidencia de cierre (I1-I6): `operacion/evidencia_verificacion_final.json`, con la comparacion de metadatos de las
+tres bases, la matriz de aislamiento de roles, el resultado del smoke real de la demo, la inspeccion de ausencia de
+reset publico y la ejecucion de la suite completa.
+
 ## 7. Matriz explicita de requisitos por componente y prueba
 
 | RF | Componentes responsables | Verificacion principal |
@@ -387,17 +391,17 @@ spec y como impone el aislamiento de constitucion #7. No se crea un test que se 
 
 ## 10. Criterios de aceptacion del plan
 
-- [ ] Existe un esquema canonico que contiene las siete tablas actuales y la unicidad nullable de
+- [x] Existe un esquema canonico que contiene las siete tablas actuales y la unicidad nullable de
   `hospedajes.google_place_id`.
-- [ ] Existe una migracion aditiva para bases existentes que no borra datos y revierte ante duplicados.
-- [ ] La seleccion de conexion acepta unicamente `testing`, `demo` y `production`, sin fallback.
-- [ ] Los tres entornos tienen base y rol independientes en la misma instancia.
-- [ ] La demo solo opera con `demo` y nunca expone reset o borrado.
-- [ ] El reset real se ejecuta una sola vez, en una transaccion que incluye vaciado y esquema, sin backup, retry ni
+- [x] Existe una migracion aditiva para bases existentes que no borra datos y revierte ante duplicados.
+- [x] La seleccion de conexion acepta unicamente `testing`, `demo` y `production`, sin fallback.
+- [x] Los tres entornos tienen base y rol independientes en la misma instancia.
+- [x] La demo solo opera con `demo` y nunca expone reset o borrado.
+- [x] El reset real se ejecuta una sola vez, en una transaccion que incluye vaciado y esquema, sin backup, retry ni
   restauracion automatica.
-- [ ] El arnes de tests usa rollback por prueba y no ejecuta operaciones destructivas sobre `destino3_test_db`.
-- [ ] La piramide cubre tests unitarios, integracion PostgreSQL y comprobaciones operacionales sin conectar la suite a
+- [x] El arnes de tests usa rollback por prueba y no ejecuta operaciones destructivas sobre `destino3_test_db`.
+- [x] La piramide cubre tests unitarios, integracion PostgreSQL y comprobaciones operacionales sin conectar la suite a
   la BD real.
-- [ ] Cada RF de RF-1 a RF-9 tiene componentes responsables y una verificacion explicita.
-- [ ] La suite completa termina con `python3 -m pytest test/ -q` en verde, con los skips explicados si PostgreSQL no
+- [x] Cada RF de RF-1 a RF-9 tiene componentes responsables y una verificacion explicita.
+- [x] La suite completa termina con `python3 -m pytest test/ -q` en verde, con los skips explicados si PostgreSQL no
   esta disponible.

@@ -211,32 +211,34 @@ por esta spec; no requiere confirmacion humana por la decision documentada de sp
 
 ## Bloque I - Verificacion final y cierre
 
-- [ ] **I1. Comparar el esquema de las tres bases** (~30 min)
+- [x] **I1. Comparar el esquema de las tres bases** (~30 min)
   - **RF:** RF-5
   - **Depende de:** H5
   - **Hecho cuando:** la comparacion de metadatos confirma igualdad de tablas, columnas, tipos, nulabilidad, FKs, checks e indices entre `destino3_db`, `demo_db` y `destino3_test_db`.
 
-- [ ] **I2. Verificar nuevamente el aislamiento de roles tras el reset** (~25 min)
+- [x] **I2. Verificar nuevamente el aislamiento de roles tras el reset** (~25 min)
   - **RF:** RF-6, RF-7, RF-8
   - **Depende de:** I1
   - **Hecho cuando:** cada rol conecta a su propia base, los tres cruces de acceso son rechazados y ningun rol de demo/testing puede ejecutar escritura en `destino3_db`.
 
-- [ ] **I3. Ejecutar el smoke test real de la demo** (~30 min)
+- [x] **I3. Ejecutar el smoke test real de la demo** (~30 min)
   - **RF:** RF-6, RF-7
   - **Depende de:** I2
   - **Hecho cuando:** `ENVIRONMENT=demo` ejecuta la demo con APIs reales, la salida confirma persistencia en `demo_db` y una consulta a `destino3_db` no muestra esos resultados.
 
-- [ ] **I4. Verificar que no existe reset publico ni borrado en demo** (~15 min)
+- [x] **I4. Verificar que no existe reset publico ni borrado en demo** (~15 min)
   - **RF:** RF-7, RF-9
   - **Depende de:** I3
   - **Hecho cuando:** la inspeccion de `src/`, entry points y repositories no encuentra endpoint, comando, metodo o import que exponga reset o borrado de la BD real o `demo_db`.
 
-- [ ] **I5. Ejecutar la suite completa y revisar skips** (~15 min)
+- [x] **I5. Ejecutar la suite completa y revisar skips** (~15 min)
   - **RF:** RF-4, RF-6, RF-7, RF-8
   - **Depende de:** I4
   - **Hecho cuando:** `python3 -m pytest test/ -q` termina sin fallos y `python3 -m pytest test/ -q -rs` muestra solo skips justificados por disponibilidad de la BD de testing.
 
-- [ ] **I6. Cerrar la documentacion viva de la spec** (~20 min)
+- [x] **I6. Cerrar la documentacion viva de la spec** (~20 min)
   - **RF:** RF-1 a RF-9
   - **Depende de:** I5
   - **Hecho cuando:** `plan.md`, `tasks.md` y la evidencia operacional reflejan el estado final, no se modifican requisitos de `spec.md` y el checklist de criterios de finalizacion queda trazable.
+
+**Evidencia de cierre I1-I6:** `operacion/evidencia_verificacion_final.json` (comparacion de esquemas, aislamiento de roles, smoke real de demo, inspeccion de reset publico, suite completa y trazabilidad de RF).
