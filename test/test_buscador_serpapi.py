@@ -135,7 +135,7 @@ class TestBuscarHospedajes(unittest.TestCase):
 
     @patch("src.services.buscador_serpapi.consultar_serpapi")
     def test_si_consultar_serpapi_falla_devuelve_lista_vacia(self, raw_mock):
-        raw_mock.side_effect = SerpApiError("SerpAPI", "consulta", "error de red")
+        raw_mock.side_effect = SerpApiError("consulta", "error de red")
 
         resultado = buscar_hospedajes("Medellin", "Colombia")
 

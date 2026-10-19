@@ -102,7 +102,7 @@ def _consultar_pagina_con_reintentos(parametros: dict) -> dict | None:
             )
             if not es_error_de_limite:
                 logger.error("Error al consultar SerpAPI: tipo=%s", type(error).__name__)
-                raise SerpApiError("SerpAPI", "consulta", type(error).__name__) from error
+                raise SerpApiError("consulta", type(error).__name__) from error
 
             if numero_intento >= settings.SERPAPI_MAX_REINTENTOS:
                 logger.error("SerpAPI agotó los reintentos por límite de tasa")
@@ -124,7 +124,7 @@ def _consultar_pagina_con_reintentos(parametros: dict) -> dict | None:
                 time.sleep(espera_reintento)
         except requests.exceptions.RequestException as error:
             logger.error("Error al consultar SerpAPI: tipo=%s", type(error).__name__)
-            raise SerpApiError("SerpAPI", "consulta", type(error).__name__) from error
+            raise SerpApiError("consulta", type(error).__name__) from error
 
     return None
 
@@ -151,7 +151,7 @@ def _obtener_propiedades_paginadas(
 
         if "error" in respuesta_pagina:
             logger.error("Error reportado por la API de SerpAPI")
-            raise SerpApiError("SerpAPI", "consulta", "Error reportado por la API")
+            raise SerpApiError("consulta", "Error reportado por la API")
 
         if primera_respuesta is None:
             primera_respuesta = respuesta_pagina
@@ -214,11 +214,7 @@ def consultar_serpapi(ciudad: str, pais: str, presupuesto_maximo: float | None =
     """
     if not settings.SERPAPI_KEY:
         logger.error("Falta la credencial requerida del proveedor")
-        raise SerpApiError(
-            "SerpAPI",
-            "configuracion",
-            "Falta la credencial del proveedor",
-        )
+        raise SerpApiError("configuracion", "Falta la credencial del proveedor")
 
     fecha_inicio = datetime.now() + timedelta(days=7)
     fecha_fin = fecha_inicio + timedelta(days=2)

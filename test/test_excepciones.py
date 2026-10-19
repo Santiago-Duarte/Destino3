@@ -18,11 +18,7 @@ from src.services.buscador_serpapi import consultar_serpapi
 class TestExcepcionesPersonalizadas(unittest.TestCase):
 
     def test_jerarquia_y_contexto_de_excepciones(self):
-        error = SerpApiError(
-            proveedor="SerpAPI",
-            operacion="consulta",
-            detalle="sin conexión",
-        )
+        error = SerpApiError("consulta", "sin conexión")
 
         self.assertIsInstance(error, Destino3Error)
         self.assertEqual(error.proveedor, "SerpAPI")
@@ -30,7 +26,7 @@ class TestExcepcionesPersonalizadas(unittest.TestCase):
         self.assertEqual(error.detalle, "sin conexión")
         self.assertIn("SerpAPI", str(error))
         self.assertIn("consulta", str(error))
-        self.assertIsInstance(EvaluacionIALoteError("Gemini", "evaluar_lote", "falló"), GeminiError)
+        self.assertIsInstance(EvaluacionIALoteError("evaluar_lote", "falló"), GeminiError)
         self.assertIsInstance(PersistenciaError("PostgreSQL", "guardar", "falló"), Destino3Error)
 
     @patch("src.services.buscador_serpapi.settings.SERPAPI_RATE_LIMIT_RPS", 0)

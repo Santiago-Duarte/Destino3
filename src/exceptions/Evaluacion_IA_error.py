@@ -1,4 +1,4 @@
-from src.exceptions.integracion import GeminiError
+from src.exceptions.GeminiError import GeminiError
 
 
 class EvaluacionIALoteError(GeminiError):

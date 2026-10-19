@@ -6,7 +6,7 @@ from google import genai
 from google.genai import types
 
 from src.config import settings
-from src.exceptions.evaluacion_ia import EvaluacionIALoteError
+from src.exceptions.Evaluacion_IA_error import EvaluacionIALoteError
 from src.models.evaluacion_ia import LoteEvaluacionesIA
 from src.models.hospedaje import Hospedaje
 
@@ -127,7 +127,6 @@ class EvaluadorIA:
                 logger.error("Error al evaluar el lote de hospedajes: tipo=%s", type(error).__name__)
                 if intento >= settings.GEMINI_MAX_REINTENTOS:
                     raise EvaluacionIALoteError(
-                        "Gemini",
                         "evaluar_lote",
                         "El lote agotó los reintentos",
                     ) from error
