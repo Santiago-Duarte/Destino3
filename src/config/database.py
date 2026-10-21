@@ -29,14 +29,14 @@ def obtener_conexion() -> ConexionPostgres | None:
     """
     entorno = os.getenv("ENVIRONMENT")
     try:
-        variable_base, variable_usuario, variable_password = _CONFIGURACION_BD[entorno]
+        nombre_base_datos, variable_usuario, variable_password = _CONFIGURACION_BD[entorno]
     except KeyError as error:
         raise ValueError(f"Entorno no soportado: {entorno!r}") from error
 
     variables_requeridas = (
         "DB_HOST",
         "DB_PORT",
-        variable_base,
+        nombre_base_datos,
         variable_usuario,
         variable_password,
     )
@@ -51,7 +51,7 @@ def obtener_conexion() -> ConexionPostgres | None:
         return psycopg2.connect(
             host=os.getenv("DB_HOST"),
             port=os.getenv("DB_PORT"),
-            database=os.getenv(variable_base),
+            database=os.getenv(nombre_base_datos),
             user=os.getenv(variable_usuario),
             password=os.getenv(variable_password),
         )

@@ -1,6 +1,7 @@
 import json
 import logging
 import time
+from zipfile import compressor_names
 
 from google import genai
 from google.genai import types
@@ -18,25 +19,31 @@ def seleccionar_candidatos(hospedajes: list[Hospedaje], presupuesto_max: float) 
 
     Filtra los que exceden el presupuesto o no tienen precio y luego ordena por
     calificación descendente (los empates se resuelven por precio ascendente),
-    quedándose con los 5 primeros.
+    quedándose con los 10 primeros.
 
     Args:
         hospedajes: Hospedajes disponibles obtenidos de la búsqueda.
         presupuesto_max: Precio por noche máximo en USD.
 
     Returns:
-        Hasta 5 hospedajes ordenados de mejor a peor relación calidad-precio;
+        Hasta 10 hospedajes ordenados de mejor a peor relación calidad-precio;
         vacía si ninguno cumple el presupuesto.
     """
-    dentro_de_presupuesto = [
-        h for h in hospedajes
-        if h.precio_noche is not None and h.precio_noche <= presupuesto_max
-    ]
+    dentro_de_presupuesto = []
+
+    for hospedaje in hospedajes:
+        if hospedaje.precio_noche is not None and hospedaje.precio_noche <= presupuesto_max:
+            dentro_de_presupuesto.append(hospedaje)
+
+    if len(dentro_de_presupuesto) < 10:
+        cantidad_hospedajes = len(dentro_de_presupuesto)
+    else:
+        cantidad_hospedajes = 10
 
     return sorted(
         dentro_de_presupuesto,
         key=lambda h: (-(h.calificacion or 0), h.precio_noche)
-    )[:5]
+    )[:cantidad_hospedajes]
 
 
 def _construir_prompt(resumen_candidatos: list[dict], presupuesto_max: float, preferencias: str) -> str:

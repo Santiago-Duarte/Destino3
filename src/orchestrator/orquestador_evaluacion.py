@@ -3,9 +3,7 @@ import logging
 from src.models.evaluacion import Evaluacion
 from src.models.evaluacion_ia import EvaluacionIAOutput, LoteEvaluacionesIA
 from src.models.hospedaje import Hospedaje
-from src.models.recomendacion import Recomendacion
 from src.repositories.evaluacion_ia_repository import EvaluacionIARepository
-from src.repositories.recomendacion_repository import RecomendacionRepository
 from src.services.evaluador_ia import EvaluadorIA
 
 logger = logging.getLogger(__name__)
@@ -16,12 +14,10 @@ class OrquestadorEvaluacion:
     def __init__(self) -> None:
         self.evaluador = EvaluadorIA()
         self.evaluaciones_repo = EvaluacionIARepository()
-        self.recomendaciones_repo = RecomendacionRepository()
 
     def evaluar_y_persistir(
             self,
             hospedajes: list[Hospedaje],
-            busqueda_id: int,
             presupuesto_max: float,
             preferencias: str,
     ) -> list[Evaluacion]:
@@ -34,7 +30,6 @@ class OrquestadorEvaluacion:
 
         Args:
             hospedajes: Candidatos a evaluar.
-            busqueda_id: Búsqueda a la que pertenecen las recomendaciones.
             presupuesto_max: Presupuesto máximo por noche en USD.
             preferencias: Criterios adicionales del usuario.
 
@@ -56,18 +51,6 @@ class OrquestadorEvaluacion:
         ]
         for evaluacion, id_generado in zip(evaluaciones, self.evaluaciones_repo.guardar_lote(evaluaciones)):
             evaluacion.id = id_generado
-
-        recomendaciones = [
-            Recomendacion(
-                id=None,
-                busqueda_id=busqueda_id,
-                hospedaje_id=hospedaje.id,
-                posicion=posicion,
-            )
-            for posicion, (_, hospedaje) in enumerate(candidatos, start=1)
-        ]
-        if recomendaciones:
-            self.recomendaciones_repo.guardar_lote(recomendaciones)
 
         return evaluaciones
 
