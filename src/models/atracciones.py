@@ -1,4 +1,4 @@
-class atracciones:
+class Atraccion:
 
     def __init__(self, id, nombre, categoria, distancia_km, precio_estimado, hospedaje_id):
         self.id = id

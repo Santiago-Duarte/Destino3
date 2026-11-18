@@ -49,7 +49,7 @@ class TestOrquestadorEvaluacion(unittest.TestCase):
         return self.orquestador.evaluar_y_persistir(
             hospedajes,
             busqueda_id=7,
-            presupuesto_max=100,
+            presupuesto_maximo_noche=100,
             preferencias="vista al mar",
         )
 

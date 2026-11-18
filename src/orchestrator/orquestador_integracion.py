@@ -12,15 +12,12 @@ from src.services.evaluador_ia import EvaluadorIA
 
 
 @dataclass
-class IntegracionResultado:
-    """Resultado del flujo F1 antes de persistir evaluaciones IA."""
-
+class ResultadoIntegracion:
     hospedajes: list[Hospedaje]
     resultado_ia: tuple[LoteEvaluacionesIA, dict[int, Hospedaje]] | None
 
 
 class OrquestadorIntegracion:
-    """Coordina la búsqueda, persistencia e evaluación de hospedajes."""
 
     def __init__(
             self,
@@ -34,60 +31,36 @@ class OrquestadorIntegracion:
         self._evaluaciones_repo = evaluaciones_repo
         self._evaluador = evaluador
 
-    def ejecutar(
+    def buscar_persistir_y_evaluar(
             self,
             ciudad: str,
             pais: str,
-            presupuesto_max: float,
+            presupuesto_maximo_noche: float,
             preferencias: str,
-    ) -> IntegracionResultado | list:
-        """Ejecuta búsqueda, persistencia de hospedajes y evaluación en lote.
-
-        Args:
-            ciudad: Ciudad donde se buscarán hospedajes.
-            pais: País de la ciudad.
-            presupuesto_max: Precio máximo por noche.
-            preferencias: Criterios adicionales para la evaluación IA.
-
-        Returns:
-            ``[]`` si la búsqueda no devuelve hospedajes; en otro caso, un
-            ``IntegracionResultado`` con hospedajes que ya tienen IDs reales y
-            el resultado de la única llamada de evaluación IA.
-        """
-        hospedajes = self._buscar_hospedajes(ciudad, pais, presupuesto_max)
+    ) -> ResultadoIntegracion | list:
+        hospedajes = self._buscar_hospedajes(ciudad, pais, presupuesto_maximo_noche)
         if not hospedajes:
             return []
 
-        hospedajes_repo = self._hospedajes_repo or HospedajeRepository()
-        ids = hospedajes_repo.guardar_lote(hospedajes)
-        for hospedaje, id_generado in zip(hospedajes, ids):
+        repositorio_hospedajes = self._hospedajes_repo or HospedajeRepository()
+        ids_generados = repositorio_hospedajes.guardar_lote(hospedajes)
+        for hospedaje, id_generado in zip(hospedajes, ids_generados):
             hospedaje.id = id_generado
 
         evaluador = self._evaluador or EvaluadorIA()
-        resultado_ia = evaluador.evaluar_lote(hospedajes, presupuesto_max, preferencias)
-        return IntegracionResultado(hospedajes=hospedajes, resultado_ia=resultado_ia)
+        resultado_ia = evaluador.evaluar_lote(
+            hospedajes, presupuesto_maximo_noche, preferencias
+        )
+        return ResultadoIntegracion(hospedajes=hospedajes, resultado_ia=resultado_ia)
 
-    def persistir_evaluaciones(self, resultado: IntegracionResultado) -> list[Evaluacion]:
-        """Mapea y persiste el lote IA usando los IDs reales de hospedajes.
-
-        Args:
-            resultado: Resultado de F1 con hospedajes persistidos y respuesta IA.
-
-        Returns:
-            Evaluaciones persistidas con sus IDs generados por PostgreSQL, o
-            una lista vacía si el lote IA no produjo resultado.
-
-        Raises:
-            PersistenciaError: si una evaluación apunta a un ``id_temporal``
-                que no existe en el mapa del lote.
-        """
+    def persistir_evaluaciones(self, resultado: ResultadoIntegracion) -> list[Evaluacion]:
         if resultado.resultado_ia is None:
             return []
 
-        respuesta_ia, hospedajes_por_id_temporal = resultado.resultado_ia
+        lote_ia, hospedaje_por_id_temporal = resultado.resultado_ia
         evaluaciones = []
-        for evaluacion_ia in respuesta_ia.evaluaciones:
-            hospedaje = hospedajes_por_id_temporal.get(evaluacion_ia.id_temporal)
+        for evaluacion_ia in lote_ia.evaluaciones:
+            hospedaje = hospedaje_por_id_temporal.get(evaluacion_ia.id_temporal)
             if hospedaje is None:
                 raise PersistenciaError(
                     "PostgreSQL",
@@ -99,8 +72,8 @@ class OrquestadorIntegracion:
         if not evaluaciones:
             return []
 
-        evaluaciones_repo = self._evaluaciones_repo or EvaluacionIARepository()
-        ids = evaluaciones_repo.guardar_lote(evaluaciones)
-        for evaluacion, id_generado in zip(evaluaciones, ids):
+        repositorio_evaluaciones = self._evaluaciones_repo or EvaluacionIARepository()
+        ids_generados = repositorio_evaluaciones.guardar_lote(evaluaciones)
+        for evaluacion, id_generado in zip(evaluaciones, ids_generados):
             evaluacion.id = id_generado
         return evaluaciones

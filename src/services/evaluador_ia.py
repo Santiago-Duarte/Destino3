@@ -1,7 +1,6 @@
 import json
 import logging
 import time
-from zipfile import compressor_names
 
 from google import genai
 from google.genai import types
@@ -13,46 +12,38 @@ from src.models.hospedaje import Hospedaje
 
 logger = logging.getLogger(__name__)
 
+MODELO_IA = "gemini-3.6-flash"
+MAX_CANDIDATOS_IA = 10
 
-def seleccionar_candidatos(hospedajes: list[Hospedaje], presupuesto_max: float) -> list[Hospedaje]:
-    """Preselecciona los hospedajes que pasarán a la evaluación del modelo.
 
-    Filtra los que exceden el presupuesto o no tienen precio y luego ordena por
-    calificación descendente (los empates se resuelven por precio ascendente),
-    quedándose con los 10 primeros.
-
-    Args:
-        hospedajes: Hospedajes disponibles obtenidos de la búsqueda.
-        presupuesto_max: Precio por noche máximo en USD.
-
-    Returns:
-        Hasta 10 hospedajes ordenados de mejor a peor relación calidad-precio;
-        vacía si ninguno cumple el presupuesto.
-    """
-    dentro_de_presupuesto = []
-
-    for hospedaje in hospedajes:
-        if hospedaje.precio_noche is not None and hospedaje.precio_noche <= presupuesto_max:
-            dentro_de_presupuesto.append(hospedaje)
-
-    if len(dentro_de_presupuesto) < 10:
-        cantidad_hospedajes = len(dentro_de_presupuesto)
-    else:
-        cantidad_hospedajes = 10
+def preseleccionar_candidatos(
+        hospedajes: list[Hospedaje],
+        presupuesto_maximo_noche: float,
+) -> list[Hospedaje]:
+    en_presupuesto = [
+        hospedaje
+        for hospedaje in hospedajes
+        if hospedaje.precio_noche is not None
+        and hospedaje.precio_noche <= presupuesto_maximo_noche
+    ]
 
     return sorted(
-        dentro_de_presupuesto,
-        key=lambda h: (-(h.calificacion or 0), h.precio_noche)
-    )[:cantidad_hospedajes]
+        en_presupuesto,
+        key=lambda hospedaje: (-(hospedaje.calificacion or 0), hospedaje.precio_noche),
+    )[:MAX_CANDIDATOS_IA]
 
 
-def _construir_prompt(resumen_candidatos: list[dict], presupuesto_max: float, preferencias: str) -> str:
+def _prompt_evaluacion(
+        resumen_candidatos: list[dict],
+        presupuesto_maximo_noche: float,
+        preferencias: str,
+) -> str:
     return f"""
                 Eres un asistente experto en viajes. Revisa la siguiente lista de hospedajes en formato JSON:
                 {json.dumps(resumen_candidatos, ensure_ascii=False, indent=4)}
 
                 Criterios del usuario:
-                - Presupuesto máximo por noche: USD ${presupuesto_max}
+                - Presupuesto máximo por noche: USD ${presupuesto_maximo_noche}
                 - Preferencias adicionales: {preferencias if preferencias else "Ninguna especificada"}
 
                 Instrucciones:
@@ -73,63 +64,44 @@ class EvaluadorIA:
     def evaluar_lote(
             self,
             hospedajes: list[Hospedaje],
-            presupuesto_max: float,
+            presupuesto_maximo_noche: float,
             preferencias: str,
     ) -> tuple[LoteEvaluacionesIA, dict[int, Hospedaje]] | None:
-        """Pide a Gemini que elija y puntúe los 3 mejores hospedajes de la lista.
-
-        Asigna a cada candidato un ``id_temporal`` correlativo para que el modelo
-        responda con JSON estructurado sin riesgo de confundir registros, y
-        conserva el mapeo id_temporal -> hospedaje para traducir la respuesta.
-
-        Args:
-            hospedajes: Candidatos disponibles.
-            presupuesto_max: Presupuesto máximo por noche en USD, incluido en el prompt.
-            preferencias: Criterios adicionales del usuario (vista, parqueadero, etc.).
-
-        Returns:
-            Una tupla ``(respuesta_ia, hospedajes_por_id_temporal)`` donde
-            ``respuesta_ia`` contiene el top 3 y el segundo elemento traduce
-            cada ``id_temporal`` a su hospedaje original, o ``None`` si no hay
-            candidatos.
-
-        Raises:
-            EvaluacionIALoteError: si Gemini sigue fallando después de agotar
-                los reintentos configurados.
-        """
-        candidatos = seleccionar_candidatos(hospedajes, presupuesto_max)
+        candidatos = preseleccionar_candidatos(hospedajes, presupuesto_maximo_noche)
 
         if not candidatos:
             logger.warning("No se encontraron hospedajes dentro del presupuesto.")
             return None
 
-        hospedajes_por_id_temporal = {}
+        hospedaje_por_id_temporal = {}
         resumen_candidatos = []
         for id_temporal, hospedaje in enumerate(candidatos, start=1):
-            hospedajes_por_id_temporal[id_temporal] = hospedaje
+            hospedaje_por_id_temporal[id_temporal] = hospedaje
             resumen_candidatos.append({
                 "id_temporal": id_temporal,
                 "nombre": hospedaje.nombre,
                 "precio_noche": hospedaje.precio_noche,
                 "calificacion": hospedaje.calificacion,
                 "direccion": hospedaje.direccion,
-                "url_reserva": hospedaje.url_reserva
+                "url_reserva": hospedaje.url_reserva,
             })
 
-        prompt = _construir_prompt(resumen_candidatos, presupuesto_max, preferencias)
+        prompt = _prompt_evaluacion(
+            resumen_candidatos, presupuesto_maximo_noche, preferencias
+        )
 
         for intento in range(settings.GEMINI_MAX_REINTENTOS + 1):
             try:
-                response = self._cliente.models.generate_content(
-                    model="gemini-3.6-flash",
+                respuesta_gemini = self._cliente.models.generate_content(
+                    model=MODELO_IA,
                     contents=prompt,
                     config=types.GenerateContentConfig(
                         response_mime_type="application/json",
                         response_schema=LoteEvaluacionesIA,
                     ),
                 )
-                respuesta = LoteEvaluacionesIA.model_validate_json(response.text)
-                return respuesta, hospedajes_por_id_temporal
+                lote_evaluado = LoteEvaluacionesIA.model_validate_json(respuesta_gemini.text)
+                return lote_evaluado, hospedaje_por_id_temporal
             except Exception as error:
                 logger.error("Error al evaluar el lote de hospedajes: tipo=%s", type(error).__name__)
                 if intento >= settings.GEMINI_MAX_REINTENTOS:
@@ -138,7 +110,6 @@ class EvaluadorIA:
                         "El lote agotó los reintentos",
                     ) from error
 
-                espera = settings.GEMINI_BACKOFF_BASE * (2 ** intento)
-                time.sleep(espera)
+                time.sleep(settings.GEMINI_BACKOFF_BASE * (2 ** intento))
 
         return None

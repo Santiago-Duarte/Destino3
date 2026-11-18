@@ -5,12 +5,7 @@ from src.repositories.base_repository import BaseRepository
 class HospedajeRepository(BaseRepository):
 
     def guardar_lote(self, hospedajes: list[Hospedaje]) -> list[int]:
-        """Inserta un lote de hospedajes en una sola transacción (todo-o-nada).
-
-        Returns:
-            Los ids generados, uno por cada hospedaje, en el mismo orden.
-        """
-        consulta = """
+        insertar_hospedaje = """
             INSERT INTO hospedajes (
                 nombre, tipo, precio_noche, calificacion, direccion,
                 url_reserva, destino_id, google_place_id
@@ -20,19 +15,19 @@ class HospedajeRepository(BaseRepository):
         """
 
         with self._transaccion() as cursor:
-            ids = []
+            ids_generados = []
             for hospedaje in hospedajes:
                 cursor.execute(
-                    consulta,
+                    insertar_hospedaje,
                     (
                         hospedaje.nombre, hospedaje.tipo,
                         hospedaje.precio_noche, hospedaje.calificacion,
                         hospedaje.direccion, hospedaje.url_reserva,
-                        hospedaje.destino_id, hospedaje.google_place_id
-                    )
+                        hospedaje.destino_id, hospedaje.google_place_id,
+                    ),
                 )
-                ids.append(cursor.fetchone()[0])
-            return ids
+                ids_generados.append(cursor.fetchone()[0])
+            return ids_generados
 
     def obtener_por_destino(self, destino_id: int) -> list[Hospedaje]:
         with self._transaccion() as cursor:
@@ -55,7 +50,7 @@ class HospedajeRepository(BaseRepository):
                     direccion=fila[5],
                     url_reserva=fila[6],
                     destino_id=fila[7],
-                    google_place_id=fila[8]
+                    google_place_id=fila[8],
                 )
                 for fila in cursor.fetchall()
             ]

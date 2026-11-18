@@ -12,59 +12,49 @@ logger = logging.getLogger(__name__)
 class OrquestadorEvaluacion:
 
     def __init__(self) -> None:
-        self.evaluador = EvaluadorIA()
-        self.evaluaciones_repo = EvaluacionIARepository()
+        self._evaluador = EvaluadorIA()
+        self._repositorio_evaluaciones = EvaluacionIARepository()
 
     def evaluar_y_persistir(
             self,
             hospedajes: list[Hospedaje],
-            presupuesto_max: float,
+            presupuesto_maximo_noche: float,
             preferencias: str,
     ) -> list[Evaluacion]:
-        """Evalúa los candidatos con IA y persiste evaluaciones y recomendaciones.
+        resultado_ia = self._evaluador.evaluar_lote(
+            hospedajes, presupuesto_maximo_noche, preferencias
+        )
 
-        Descarta los ``id_temporal`` huérfanos que la IA devuelva sin hospedaje
-        asociado, guarda las evaluaciones de los 3 elegidos en una única
-        transacción y, después, persiste las recomendaciones ordenadas por
-        posición. Si la IA no devuelve nada utilizable no se escribe nada.
-
-        Args:
-            hospedajes: Candidatos a evaluar.
-            presupuesto_max: Presupuesto máximo por noche en USD.
-            preferencias: Criterios adicionales del usuario.
-
-        Returns:
-            Las evaluaciones guardadas en base de datos, con su id asignado.
-        """
-        resultado = self.evaluador.evaluar_lote(hospedajes, presupuesto_max, preferencias)
-
-        if resultado is None:
+        if resultado_ia is None:
             logger.warning("No se pudo evaluar los hospedajes")
             return []
 
-        respuesta, hospedajes_por_id_temporal = resultado
-        candidatos = self._candidatos_elegidos(respuesta, hospedajes_por_id_temporal)
+        lote_ia, hospedaje_por_id_temporal = resultado_ia
+        candidatos = self._emparejar_evaluaciones(lote_ia, hospedaje_por_id_temporal)
 
         evaluaciones = [
             Evaluacion.desde_ia(evaluacion_ia, hospedaje.id)
             for evaluacion_ia, hospedaje in candidatos
         ]
-        for evaluacion, id_generado in zip(evaluaciones, self.evaluaciones_repo.guardar_lote(evaluaciones)):
+        ids_generados = self._repositorio_evaluaciones.guardar_lote(evaluaciones)
+        for evaluacion, id_generado in zip(evaluaciones, ids_generados):
             evaluacion.id = id_generado
 
         return evaluaciones
 
     @staticmethod
-    def _candidatos_elegidos(
-            respuesta: LoteEvaluacionesIA,
-            hospedajes_por_id_temporal: dict[int, Hospedaje],
+    def _emparejar_evaluaciones(
+            lote_ia: LoteEvaluacionesIA,
+            hospedaje_por_id_temporal: dict[int, Hospedaje],
     ) -> list[tuple[EvaluacionIAOutput, Hospedaje]]:
-        """Descarta los ``id_temporal`` sin hospedaje y devuelve los pares en el orden de la IA."""
         candidatos = []
-        for evaluacion_ia in respuesta.evaluaciones:
-            hospedaje = hospedajes_por_id_temporal.get(evaluacion_ia.id_temporal)
+        for evaluacion_ia in lote_ia.evaluaciones:
+            hospedaje = hospedaje_por_id_temporal.get(evaluacion_ia.id_temporal)
             if hospedaje is None:
-                logger.warning("id_temporal %s sin hospedaje asociado, descartando", evaluacion_ia.id_temporal)
+                logger.warning(
+                    "id_temporal %s sin hospedaje asociado, descartando",
+                    evaluacion_ia.id_temporal,
+                )
                 continue
             candidatos.append((evaluacion_ia, hospedaje))
         return candidatos

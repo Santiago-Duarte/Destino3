@@ -16,11 +16,6 @@ class BaseRepository:
 
     @contextmanager
     def _transaccion(self) -> Iterator[CursorPostgres]:
-        """Cursor con transacción automática.
-
-        Confirma al salir sin errores, revierte y relanza el error si algo
-        falla dentro del bloque, y siempre cierra cursor y conexión.
-        """
         conexion = self._obtener_conexion()
         cursor = conexion.cursor()
         try:

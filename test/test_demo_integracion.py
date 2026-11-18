@@ -43,7 +43,7 @@ class TestDemoIntegracion(unittest.TestCase):
         }
         conexion = MagicMock()
         orquestador = MagicMock()
-        orquestador.ejecutar.return_value = []
+        orquestador.buscar_persistir_y_evaluar.return_value = []
 
         def construir_orquestador():
             conexion_configurada = database.obtener_conexion()
@@ -68,7 +68,7 @@ class TestDemoIntegracion(unittest.TestCase):
             user="destino3_demo",
             password="password-demo",
         )
-        orquestador.ejecutar.assert_called_once()
+        orquestador.buscar_persistir_y_evaluar.assert_called_once()
 
 
 if __name__ == "__main__":

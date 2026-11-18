@@ -4,12 +4,10 @@ import argparse
 import logging
 import os
 
-
 logger = logging.getLogger(__name__)
 
 
 def crear_parser() -> argparse.ArgumentParser:
-    """Crea el parser de parámetros del demo manual."""
     parser = argparse.ArgumentParser(description="Ejecuta la integración real de Destino3")
     parser.add_argument("--ciudad", default="Medellin", help="Ciudad a buscar")
     parser.add_argument("--pais", default="Colombia", help="País de la ciudad")
@@ -28,7 +26,6 @@ def crear_parser() -> argparse.ArgumentParser:
 
 
 def ejecutar_demo(argumentos: argparse.Namespace) -> int:
-    """Ejecuta el flujo real y registra hospedajes y evaluaciones persistidos."""
     if os.getenv("ENVIRONMENT") != "demo":
         logger.error("El demo de integración requiere ENVIRONMENT=demo.")
         return 1
@@ -44,13 +41,13 @@ def ejecutar_demo(argumentos: argparse.Namespace) -> int:
 
     try:
         orquestador = OrquestadorIntegracion()
-        resultado = orquestador.ejecutar(
+        resultado = orquestador.buscar_persistir_y_evaluar(
             argumentos.ciudad,
             argumentos.pais,
             argumentos.presupuesto_max,
             argumentos.preferencias,
         )
-        if resultado == []:
+        if not resultado:
             logger.info("La búsqueda no devolvió hospedajes.")
             return 0
 
@@ -79,7 +76,6 @@ def ejecutar_demo(argumentos: argparse.Namespace) -> int:
 
 
 def main() -> int:
-    """Configura el logging y ejecuta el demo con argumentos de línea de comandos."""
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     return ejecutar_demo(crear_parser().parse_args())
 

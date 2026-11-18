@@ -45,7 +45,7 @@ class TestIntegracionFlujoCompleto(BaseDBTestCase):
             evaluaciones_repo=EvaluacionIARepository(),
         )
 
-        resultado = orquestador.ejecutar(ciudad, "Colombia", 100, "")
+        resultado = orquestador.buscar_persistir_y_evaluar(ciudad, "Colombia", 100, "")
         evaluaciones = orquestador.persistir_evaluaciones(resultado)
 
         evaluacion_persistida = EvaluacionIARepository().obtener_por_hospedaje(

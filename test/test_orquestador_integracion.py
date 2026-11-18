@@ -7,7 +7,7 @@ from src.models.evaluacion_ia import LoteEvaluacionesIA
 from src.models.evaluacion_ia import EvaluacionIAOutput
 from src.models.hospedaje import Hospedaje
 from src.orchestrator.orquestador_integracion import (
-    IntegracionResultado,
+    ResultadoIntegracion,
     OrquestadorIntegracion,
 )
 from src.services.buscador_serpapi import buscar_hospedajes
@@ -44,9 +44,9 @@ class TestOrquestadorIntegracion(unittest.TestCase):
         )
 
     def test_busca_persiste_con_ids_reales_y_evalua_en_un_lote(self):
-        resultado = self.orquestador.ejecutar("Medellin", "Colombia", 100, "cerca al parque")
+        resultado = self.orquestador.buscar_persistir_y_evaluar("Medellin", "Colombia", 100, "cerca al parque")
 
-        self.assertIsInstance(resultado, IntegracionResultado)
+        self.assertIsInstance(resultado, ResultadoIntegracion)
         self.assertEqual([h.id for h in resultado.hospedajes], [101, 102])
         self.assertIs(resultado.resultado_ia, self.resultado_ia)
         self.buscar.assert_called_once_with("Medellin", "Colombia", 100)
@@ -65,7 +65,7 @@ class TestOrquestadorIntegracion(unittest.TestCase):
             puntos_debiles="Precio",
             score_calidad_precio=8,
         )
-        resultado = IntegracionResultado(
+        resultado = ResultadoIntegracion(
             hospedajes=[hospedaje],
             resultado_ia=(LoteEvaluacionesIA(evaluaciones=[evaluacion_ia]), {1: hospedaje}),
         )
@@ -79,7 +79,7 @@ class TestOrquestadorIntegracion(unittest.TestCase):
         self.evaluaciones_repo.guardar_lote.assert_called_once_with(evaluaciones)
 
     def test_fallo_ia_no_persiste_y_devuelve_lista_vacia(self):
-        resultado = IntegracionResultado(hospedajes=[crear_hospedaje("Hotel")], resultado_ia=None)
+        resultado = ResultadoIntegracion(hospedajes=[crear_hospedaje("Hotel")], resultado_ia=None)
 
         evaluaciones = self.orquestador.persistir_evaluaciones(resultado)
 
@@ -96,7 +96,7 @@ class TestOrquestadorIntegracion(unittest.TestCase):
             puntos_debiles="Precio",
             score_calidad_precio=8,
         )
-        resultado = IntegracionResultado(
+        resultado = ResultadoIntegracion(
             hospedajes=[hospedaje],
             resultado_ia=(LoteEvaluacionesIA(evaluaciones=[evaluacion_ia]), {1: hospedaje}),
         )
@@ -116,7 +116,7 @@ class TestOrquestadorIntegracion(unittest.TestCase):
             evaluador=evaluador,
         )
 
-        resultado = orquestador.ejecutar("Medellin", "Colombia", 100, "")
+        resultado = orquestador.buscar_persistir_y_evaluar("Medellin", "Colombia", 100, "")
 
         self.assertEqual(resultado, [])
         hospedajes_repo.guardar_lote.assert_not_called()
@@ -132,7 +132,7 @@ class TestOrquestadorIntegracion(unittest.TestCase):
             evaluador=evaluador,
         )
 
-        resultado = orquestador.ejecutar("Medellin", "Colombia", 100, "")
+        resultado = orquestador.buscar_persistir_y_evaluar("Medellin", "Colombia", 100, "")
 
         self.assertEqual(resultado, [])
         consultar_mock.assert_called_once_with("Medellin", "Colombia", 100)

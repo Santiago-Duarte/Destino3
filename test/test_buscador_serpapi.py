@@ -10,7 +10,7 @@ from src.repositories.hospedaje_repository import HospedajeRepository
 from src.services.buscador_serpapi import (
     buscar_hospedajes,
     consultar_serpapi,
-    construir_link_google_hotels,
+    construir_url_reserva,
 )
 from test.db_test_case import BaseDBTestCase
 
@@ -43,10 +43,10 @@ def respuesta_mock():
     }
 
 
-class TestConstruirLinkGoogleHotels(unittest.TestCase):
+class TestConstruirUrlReserva(unittest.TestCase):
 
     def test_genera_url_de_entidad_con_fechas_y_query_codificado(self):
-        url = construir_link_google_hotels(
+        url = construir_url_reserva(
             "ChoTOKENA", "2026-08-14", "2026-08-16", "hoteles en Medellin Colombia"
         )
 
@@ -89,7 +89,7 @@ class TestBuscarHospedajes(unittest.TestCase):
     def test_filtra_por_presupuesto(self, raw_mock):
         raw_mock.return_value = respuesta_mock()
 
-        hospedajes = buscar_hospedajes("Medellin", "Colombia", presupuesto_maximo=70)
+        hospedajes = buscar_hospedajes("Medellin", "Colombia", precio_maximo_noche=70)
 
         self.assertEqual(len(hospedajes), 1)
         self.assertEqual(hospedajes[0].nombre, "Hotel A")
@@ -183,7 +183,7 @@ class TestConsultarSerpapi(unittest.TestCase):
         respuesta.json.return_value = {"properties": []}
         get_mock.return_value = respuesta
 
-        resultado = consultar_serpapi("Medellin", "Colombia", presupuesto_maximo=80)
+        resultado = consultar_serpapi("Medellin", "Colombia", precio_maximo_noche=80)
 
         self.assertEqual(resultado, {"properties": []})
         llamada_params = get_mock.call_args.kwargs["params"]

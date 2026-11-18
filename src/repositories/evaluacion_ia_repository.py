@@ -5,40 +5,34 @@ from src.repositories.base_repository import BaseRepository
 class EvaluacionIARepository(BaseRepository):
 
     def guardar_lote(self, evaluaciones: list[Evaluacion]) -> list[int]:
-        """Inserta un lote de evaluaciones en una sola transacción (todo-o-nada).
-
-        Solo se persisten campos de negocio más ``hospedaje_id`` real: la tabla
-        ``evaluaciones_ia`` nunca recibe los tokens de correlación efímeros de
-        la IA (constitución #4), que quedan reservados para el ciclo en memoria
-        con el proveedor.
-
-        Returns:
-            Los ids generados, uno por cada evaluación, en el mismo orden.
-        """
         if not evaluaciones:
             return []
 
-        consulta = """
-            INSERT INTO evaluaciones_ia (resumen_ejecutivo, puntos_fuertes, puntos_debiles, score_calidad_precio, hospedaje_id)
+        # `id_temporal` es efímero: nunca se persiste.
+        insertar_evaluacion = """
+            INSERT INTO evaluaciones_ia (
+                resumen_ejecutivo, puntos_fuertes, puntos_debiles,
+                score_calidad_precio, hospedaje_id
+            )
             VALUES (%s, %s, %s, %s, %s)
             RETURNING id;
         """
 
         with self._transaccion() as cursor:
-            ids = []
+            ids_generados = []
             for evaluacion in evaluaciones:
                 cursor.execute(
-                    consulta,
+                    insertar_evaluacion,
                     (
                         evaluacion.resumen_ejecutivo,
                         evaluacion.puntos_fuertes,
                         evaluacion.puntos_debiles,
                         evaluacion.score_calidad_precio,
                         evaluacion.hospedaje_id,
-                    )
+                    ),
                 )
-                ids.append(cursor.fetchone()[0])
-            return ids
+                ids_generados.append(cursor.fetchone()[0])
+            return ids_generados
 
     def guardar(self, evaluacion: Evaluacion) -> int:
         return self.guardar_lote([evaluacion])[0]
@@ -47,7 +41,8 @@ class EvaluacionIARepository(BaseRepository):
         with self._transaccion() as cursor:
             cursor.execute(
                 """
-                SELECT id, resumen_ejecutivo, puntos_fuertes, puntos_debiles, score_calidad_precio, hospedaje_id
+                SELECT id, resumen_ejecutivo, puntos_fuertes, puntos_debiles,
+                score_calidad_precio, hospedaje_id
                 FROM evaluaciones_ia
                 WHERE hospedaje_id = %s;
                 """,

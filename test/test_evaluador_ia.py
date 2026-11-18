@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from src.exceptions.Evaluacion_IA_error import EvaluacionIALoteError
 from src.models.hospedaje import Hospedaje
-from src.services.evaluador_ia import EvaluadorIA, seleccionar_candidatos
+from src.services.evaluador_ia import EvaluadorIA, preseleccionar_candidatos
 
 
 RUTA_FIXTURES = Path(__file__).parent / "fixtures"
@@ -24,26 +24,26 @@ def crear_hospedaje(nombre, precio_noche, calificacion):
 
 class TestSeleccionarCandidatos(unittest.TestCase):
 
-    def test_seleccionar_candidatos_con_lista_vacia(self):
-        resultado = seleccionar_candidatos([], 100)
+    def test_preseleccionar_candidatos_con_lista_vacia(self):
+        resultado = preseleccionar_candidatos([], 100)
         self.assertEqual(resultado, [])
 
     def test_todos_los_hospedajes_en_el_presupuesto(self):
         hospedajes = [crear_hospedaje(f"h{i}", 10, 4.0) for i in range(5)]
 
-        resultado = seleccionar_candidatos(hospedajes, 30)
+        resultado = preseleccionar_candidatos(hospedajes, 30)
         self.assertEqual(len(resultado), 5)
 
     def test_hospedajes_fuera_presupuesto(self):
         hospedajes = [crear_hospedaje(f"h{i}", 50, 4.0) for i in range(5)]
 
-        resultado = seleccionar_candidatos(hospedajes, 30)
+        resultado = preseleccionar_candidatos(hospedajes, 30)
         self.assertEqual(resultado, [])
 
     def test_menos_de_5_hospedajes(self):
         hospedajes = [crear_hospedaje(f"h{i}", 10, 4.0) for i in range(3)]
 
-        resultado = seleccionar_candidatos(hospedajes, 30)
+        resultado = preseleccionar_candidatos(hospedajes, 30)
         self.assertEqual(len(resultado), 3)
 
     def test_mas_de_5_hospedajes_devuelve_solo_los_5_mejores(self):
@@ -56,7 +56,7 @@ class TestSeleccionarCandidatos(unittest.TestCase):
             crear_hospedaje("h1", 10, 5.0),
         ]
 
-        resultado = seleccionar_candidatos(hospedajes, 30)
+        resultado = preseleccionar_candidatos(hospedajes, 30)
 
         self.assertEqual(len(resultado), 5)
         nombres = [h.nombre for h in resultado]
@@ -72,7 +72,7 @@ class TestSeleccionarCandidatos(unittest.TestCase):
             crear_hospedaje("h5", 12, 5.0),
         ]
 
-        resultado = seleccionar_candidatos(hospedajes, 30)
+        resultado = preseleccionar_candidatos(hospedajes, 30)
 
         nombres = [h.nombre for h in resultado]
         self.assertEqual(nombres, ["h5", "h2", "h1", "h4", "h3"])
@@ -86,7 +86,7 @@ class TestSeleccionarCandidatos(unittest.TestCase):
             crear_hospedaje("h5", 15, 5.0),
         ]
 
-        resultado = seleccionar_candidatos(hospedajes, 30)
+        resultado = preseleccionar_candidatos(hospedajes, 30)
 
         precios = [h.precio_noche for h in resultado]
         self.assertEqual(precios, [10, 15, 20, 25, 30])
@@ -98,7 +98,7 @@ class TestSeleccionarCandidatos(unittest.TestCase):
             crear_hospedaje("h3", 20, 4.0),
         ]
 
-        resultado = seleccionar_candidatos(hospedajes, 30)
+        resultado = preseleccionar_candidatos(hospedajes, 30)
 
         nombres = [h.nombre for h in resultado]
         self.assertEqual(nombres, ["h1", "h3"])
@@ -110,7 +110,7 @@ class TestSeleccionarCandidatos(unittest.TestCase):
             crear_hospedaje("h3", 10, 4.0),
         ]
 
-        resultado = seleccionar_candidatos(hospedajes, 30)
+        resultado = preseleccionar_candidatos(hospedajes, 30)
 
         nombres = [h.nombre for h in resultado]
         self.assertEqual(nombres, ["h1", "h3", "h2"])
@@ -118,7 +118,7 @@ class TestSeleccionarCandidatos(unittest.TestCase):
     def test_precio_igual_al_presupuesto_se_incluye(self):
         hospedajes = [crear_hospedaje("h1", 30, 4.0)]
 
-        resultado = seleccionar_candidatos(hospedajes, 30)
+        resultado = preseleccionar_candidatos(hospedajes, 30)
 
         self.assertEqual(len(resultado), 1)
 

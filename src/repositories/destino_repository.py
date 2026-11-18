@@ -1,12 +1,12 @@
-from src.models.destino import Destino
 from src.exceptions import PersistenciaError
+from src.models.destino import Destino
 from src.repositories.base_repository import BaseRepository
 
 
 class DestinoRepository(BaseRepository):
 
     @staticmethod
-    def _ciudad_y_pais_validados(destino: Destino) -> tuple[str, str]:
+    def _normalizar_ciudad_y_pais(destino: Destino) -> tuple[str, str]:
         ciudad = (destino.ciudad or "").strip()
         pais = (destino.pais or "").strip()
         if not ciudad or not pais:
@@ -14,7 +14,7 @@ class DestinoRepository(BaseRepository):
         return ciudad, pais
 
     def guardar(self, destino: Destino) -> int:
-        ciudad, pais = self._ciudad_y_pais_validados(destino)
+        ciudad, pais = self._normalizar_ciudad_y_pais(destino)
 
         with self._transaccion() as cursor:
             cursor.execute(
@@ -26,50 +26,39 @@ class DestinoRepository(BaseRepository):
     def obtener_todos(self) -> list[Destino]:
         with self._transaccion() as cursor:
             cursor.execute("SELECT id, ciudad, pais FROM destinos;")
-            return [Destino(id=fila[0], ciudad=fila[1], pais=fila[2]) for fila in cursor.fetchall()]
+            return [
+                Destino(id=fila[0], ciudad=fila[1], pais=fila[2])
+                for fila in cursor.fetchall()
+            ]
 
     def obtener_o_crear(self, destino: Destino) -> int:
-        """Devuelve el id de un destino por ciudad/país o lo crea si no existe.
+        ciudad, pais = self._normalizar_ciudad_y_pais(destino)
 
-        La comparación ignora mayúsculas y espacios sobrantes porque el índice
-        único es ``LOWER(TRIM(...))``. Ante una inserción concurrente que
-        dispare ese índice único, se vuelve a consultar para recuperar el
-        registro que ya insertó la otra transacción.
-
-        Returns:
-            El id del destino existente o recién creado.
-
-        Raises:
-            ValueError: Si ciudad o país quedan vacíos.
-            PersistenciaError: Si tras el conflicto de índice la otra
-                transacción ya no es visible y no aparece ningún registro.
-        """
-        ciudad, pais = self._ciudad_y_pais_validados(destino)
-
-        consulta = (
+        buscar_destino = (
             "SELECT id FROM destinos "
             "WHERE LOWER(TRIM(ciudad)) = LOWER(%s) AND LOWER(TRIM(pais)) = LOWER(%s);"
         )
 
         with self._transaccion() as cursor:
-            cursor.execute(consulta, (ciudad, pais))
-            existente = cursor.fetchone()
-            if existente:
-                return existente[0]
+            cursor.execute(buscar_destino, (ciudad, pais))
+            fila_existente = cursor.fetchone()
+            if fila_existente:
+                return fila_existente[0]
 
             cursor.execute(
-                "INSERT INTO destinos (ciudad, pais) VALUES (%s, %s) ON CONFLICT DO NOTHING RETURNING id;",
+                "INSERT INTO destinos (ciudad, pais) VALUES (%s, %s) "
+                "ON CONFLICT DO NOTHING RETURNING id;",
                 (ciudad, pais),
             )
-            insertado = cursor.fetchone()
-            if insertado:
-                return insertado[0]
+            fila_insertada = cursor.fetchone()
+            if fila_insertada:
+                return fila_insertada[0]
 
-            # Carrera: otra transacción insertó el destino entre el SELECT y el INSERT.
-            cursor.execute(consulta, (ciudad, pais))
-            existente = cursor.fetchone()
-            if existente:
-                return existente[0]
+            # Otra transacción insertó el destino entre el SELECT y el INSERT.
+            cursor.execute(buscar_destino, (ciudad, pais))
+            fila_existente = cursor.fetchone()
+            if fila_existente:
+                return fila_existente[0]
             raise PersistenciaError(
                 "PostgreSQL",
                 "obtener_o_crear_destino",
