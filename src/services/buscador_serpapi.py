@@ -225,7 +225,7 @@ def buscar_hospedajes(
         logger.error("La búsqueda de hospedajes falló: tipo=%s", type(error).__name__)
         return []
 
-    if not respuesta or "properties" not in respuesta:
+    if not respuesta or not respuesta.get("properties"):
         return []
 
     try:

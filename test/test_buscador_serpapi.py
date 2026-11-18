@@ -95,15 +95,17 @@ class TestBuscarHospedajes(unittest.TestCase):
         self.assertEqual(len(hospedajes), 1)
         self.assertEqual(hospedajes[0].nombre, "Hotel A")
 
+    @patch("src.services.buscador_serpapi.DestinoRepository.obtener_o_crear")
     @patch("src.services.buscador_serpapi.consultar_serpapi")
-    def test_sin_properties_devuelve_lista_vacia(self, raw_mock):
-        raw_mock.return_value = {"search_parameters": {}}
+    def test_sin_properties_devuelve_lista_vacia_sin_crear_destino(self, raw_mock, destino_mock):
+        for respuesta in ({"search_parameters": {}}, {"properties": []}):
+            with self.subTest(respuesta=respuesta):
+                raw_mock.return_value = respuesta
 
-        resultado = buscar_hospedajes("Medellin", "Colombia")
+                resultado = buscar_hospedajes("Medellin", "Colombia")
 
-        self.assertEqual(resultado, [])
-        # Tampoco debe escribir archivo ni mapear hospedajes
-        raw_mock.assert_called_once_with("Medellin", "Colombia", None)
+                self.assertEqual(resultado, [])
+        destino_mock.assert_not_called()
 
     @patch("src.services.buscador_serpapi.consultar_serpapi")
     def test_todos_los_hospedajes_llevan_el_destino_resuelto(self, raw_mock):
