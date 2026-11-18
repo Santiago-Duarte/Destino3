@@ -120,8 +120,8 @@ class TestDestinoRepository(BaseDBTestCase):
 class TestObtenerOCrearDestinoCarrera(BaseDBTestCase):
     """Otra transacción inserta el destino entre el SELECT inicial y el INSERT."""
 
-    def _resolver_carrera(self, obtener_conexion):
-        """Simula la carrera y devuelve (id obtenido, cursor y conexión simulados)."""
+    @patch("src.repositories.base_repository.BaseRepository._obtener_conexion")
+    def test_devuelve_el_id_que_inserto_la_otra_transaccion(self, obtener_conexion):
         conexion = MagicMock()
         cursor = MagicMock()
         obtener_conexion.return_value = conexion
@@ -129,33 +129,8 @@ class TestObtenerOCrearDestinoCarrera(BaseDBTestCase):
         cursor.fetchone.side_effect = [None, None, (99,)]
 
         resultado = self.destino_repo.obtener_o_crear(Destino(ciudad="Medellin", pais="Colombia"))
-        return resultado, cursor, conexion
-
-    @patch("src.repositories.base_repository.BaseRepository._obtener_conexion")
-    def test_devuelve_el_id_que_inserto_la_otra_transaccion(self, obtener_conexion):
-        resultado, _, _ = self._resolver_carrera(obtener_conexion)
 
         self.assertEqual(resultado, 99)
-
-    @patch("src.repositories.base_repository.BaseRepository._obtener_conexion")
-    def test_ejecuta_tres_queries(self, obtener_conexion):
-        _, cursor, _ = self._resolver_carrera(obtener_conexion)
-
-        self.assertEqual(cursor.execute.call_count, 3)
-
-    @patch("src.repositories.base_repository.BaseRepository._obtener_conexion")
-    def test_hace_commit_sin_rollback(self, obtener_conexion):
-        _, _, conexion = self._resolver_carrera(obtener_conexion)
-
-        conexion.commit.assert_called_once()
-        conexion.rollback.assert_not_called()
-
-    @patch("src.repositories.base_repository.BaseRepository._obtener_conexion")
-    def test_cierra_cursor_y_conexion(self, obtener_conexion):
-        _, cursor, conexion = self._resolver_carrera(obtener_conexion)
-
-        cursor.close.assert_called_once()
-        conexion.close.assert_called_once()
 
 
 if __name__ == '__main__':

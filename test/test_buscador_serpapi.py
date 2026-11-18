@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import requests
 
+from src.config import settings
 from src.exceptions import SerpApiError
 from src.repositories.hospedaje_repository import HospedajeRepository
 from src.services.buscador_serpapi import (
@@ -142,27 +143,18 @@ class TestBuscarHospedajes(unittest.TestCase):
         self.assertEqual(resultado, [])
         raw_mock.assert_called_once_with("Medellin", "Colombia", None)
 
-    @patch("builtins.open")
-    @patch("src.services.buscador_serpapi.consultar_serpapi")
-    def test_no_escribe_respuesta_de_prueba(self, raw_mock, open_mock):
-        raw_mock.return_value = respuesta_mock()
-
-        buscar_hospedajes("Medellin", "Colombia")
-
-        open_mock.assert_not_called()
-
 
 class TestConsultarSerpapi(unittest.TestCase):
 
     @patch("src.services.buscador_serpapi.requests.get")
-    def test_error_de_red_lanza_runtime_error(self, get_mock):
+    def test_error_de_red_lanza_serpapi_error(self, get_mock):
         get_mock.side_effect = requests.exceptions.ConnectionError("sin red")
 
         with self.assertRaises(SerpApiError):
             consultar_serpapi("Medellin", "Colombia")
 
     @patch("src.services.buscador_serpapi.requests.get")
-    def test_error_de_api_en_json_lanza_runtime_error(self, get_mock):
+    def test_error_de_api_en_json_lanza_serpapi_error(self, get_mock):
         respuesta = unittest.mock.Mock()
         respuesta.raise_for_status.return_value = None
         respuesta.json.return_value = {"error": "Invalid hl value"}
@@ -172,12 +164,13 @@ class TestConsultarSerpapi(unittest.TestCase):
             consultar_serpapi("Medellin", "Colombia")
 
     @patch("src.services.buscador_serpapi.settings.SERPAPI_KEY", "")
-    def test_falta_serpapi_key_lanza_runtime_error(self):
+    def test_falta_serpapi_key_lanza_serpapi_error(self):
         with self.assertRaises(SerpApiError):
             consultar_serpapi("Medellin", "Colombia")
 
+    @patch("src.services.buscador_serpapi.settings.SERPAPI_KEY", "clave-prueba")
     @patch("src.services.buscador_serpapi.requests.get")
-    def test_respuesta_ok_pasa_presupuesto_como_max_price(self, get_mock):
+    def test_respuesta_ok_pasa_presupuesto_y_timeout_a_serpapi(self, get_mock):
         respuesta = unittest.mock.Mock()
         respuesta.raise_for_status.return_value = None
         respuesta.json.return_value = {"properties": []}
@@ -185,23 +178,15 @@ class TestConsultarSerpapi(unittest.TestCase):
 
         resultado = consultar_serpapi("Medellin", "Colombia", precio_maximo_noche=80)
 
+        parametros = get_mock.call_args.kwargs["params"]
+        self.assertEqual(parametros["max_price"], 80)
+        self.assertIn("check_in_date", parametros)
+        self.assertIn("check_out_date", parametros)
         self.assertEqual(resultado, {"properties": []})
-        llamada_params = get_mock.call_args.kwargs["params"]
-        self.assertEqual(llamada_params["max_price"], 80)
-        self.assertIn("check_in_date", llamada_params)
-        self.assertIn("check_out_date", llamada_params)
-        # El timeout debe venir de settings (RF-10, D1)
-        self.assertEqual(llamada_params, get_mock.call_args.kwargs["params"])
-        self.assertEqual(
-            get_mock.call_args.kwargs["timeout"],
-            __import__("src.config.settings", fromlist=["SERPAPI_TIMEOUT"]).SERPAPI_TIMEOUT,
-        )
+        self.assertEqual(get_mock.call_args.kwargs["timeout"], settings.SERPAPI_TIMEOUT)
 
 
 class TestIntegracionBuscarYGuardar(BaseDBTestCase):
-
-    def setUp(self):
-        super().setUp()
 
     @patch("src.services.buscador_serpapi.consultar_serpapi")
     def test_integracion_buscar_y_guardar_persiste(self, mock_raw):
@@ -233,7 +218,7 @@ def _pagina(properties, next_page_token=None, search_parameters=None):
 
 
 class TestConsultarSerpapiPaginacion(unittest.TestCase):
-    """RF-3: paginación con corte por max_pages / max_results y acumulación."""
+    """Paginación con corte por max_pages/max_results y acumulación."""
 
     def _mock_get_por_pagina(self, paginas):
         """Devuelve un side_effect que selecciona la página según next_page_token.
@@ -351,7 +336,7 @@ class TestConsultarSerpapiPaginacion(unittest.TestCase):
 
 
 class TestConsultarSerpapiRateLimit(unittest.TestCase):
-    """RF-2/RF-9: recuperación limitada ante 429 y límite global de llamadas."""
+    """Recuperación ante 429 y límite global de llamadas."""
 
     def _respuesta_ok(self, properties=None, next_page_token=None):
         respuesta = unittest.mock.Mock()

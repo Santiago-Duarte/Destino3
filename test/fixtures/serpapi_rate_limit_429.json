@@ -1,9 +1,0 @@
-{
-  "status_code": 429,
-  "headers": {
-    "Retry-After": "2"
-  },
-  "body": {
-    "error": "Too many requests"
-  }
-}

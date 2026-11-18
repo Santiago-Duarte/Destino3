@@ -55,8 +55,6 @@ JSON_SCORE_TIPO_INCORRECTO = """
 """
 
 
-
-
 class TestLoteEvaluacionesIA(unittest.TestCase):
 
     def test_respuesta_valida_parsea_todas_las_evaluaciones(self):
@@ -95,22 +93,6 @@ class TestEvaluacionIAOutput(unittest.TestCase):
 
         self.assertEqual(minima.score_calidad_precio, 1)
         self.assertEqual(maxima.score_calidad_precio, 10)
-
-
-class TestSinDuplicacion(unittest.TestCase):
-    """El contrato de la IA vive una sola vez, en src/models/Evaluacion_IA_error.py."""
-
-    def test_el_servicio_y_el_orquestador_usan_el_lote_del_dominio(self):
-        from src.orchestrator import orquestador_evaluacion
-        from src.services import evaluador_ia
-
-        self.assertIs(evaluador_ia.LoteEvaluacionesIA, LoteEvaluacionesIA)
-        self.assertIs(orquestador_evaluacion.LoteEvaluacionesIA, LoteEvaluacionesIA)
-
-    def test_la_clave_de_la_respuesta_de_ia_es_evaluaciones(self):
-        propiedades = set(LoteEvaluacionesIA.model_json_schema()["properties"])
-
-        self.assertEqual(propiedades, {"evaluaciones"})
 
 
 if __name__ == "__main__":

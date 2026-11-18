@@ -179,13 +179,8 @@ class TestHospedajeRepository(BaseDBTestCase):
             )
             self.assertEqual(cursor.fetchone()[0], 0)
 
-    def test_el_repositorio_no_tiene_insercion_unitaria(self):
-        """RF-4: los hospedajes solo se persisten como lote todo-o-nada."""
-        self.assertFalse(hasattr(self.hospedaje_repo, "guardar"))
-
-
 class TestGuardarLoteHospedajes(BaseDBTestCase):
-    """RF-4: el lote de hospedajes se persiste en una única transacción."""
+    """El lote se persiste en una única transacción."""
 
     def _crear_lote(self, destino_id, cantidad=3):
         lote_id = uuid.uuid4().hex

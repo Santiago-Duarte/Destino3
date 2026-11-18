@@ -22,7 +22,7 @@ def crear_hospedaje(nombre, precio_noche, calificacion):
     )
 
 
-class TestSeleccionarCandidatos(unittest.TestCase):
+class TestPreseleccionarCandidatos(unittest.TestCase):
 
     def test_preseleccionar_candidatos_con_lista_vacia(self):
         resultado = preseleccionar_candidatos([], 100)
@@ -46,22 +46,16 @@ class TestSeleccionarCandidatos(unittest.TestCase):
         resultado = preseleccionar_candidatos(hospedajes, 30)
         self.assertEqual(len(resultado), 3)
 
-    def test_mas_de_5_hospedajes_devuelve_solo_los_5_mejores(self):
-        hospedajes = [
-            crear_hospedaje("h6", 10, 0.5),
-            crear_hospedaje("h5", 10, 1.0),
-            crear_hospedaje("h4", 10, 2.0),
-            crear_hospedaje("h3", 10, 3.0),
-            crear_hospedaje("h2", 10, 4.0),
-            crear_hospedaje("h1", 10, 5.0),
-        ]
+    def test_devuelve_como_maximo_diez_hospedajes(self):
+        hospedajes = [crear_hospedaje(f"h{i}", 10, float(i)) for i in range(12)]
 
         resultado = preseleccionar_candidatos(hospedajes, 30)
 
-        self.assertEqual(len(resultado), 5)
+        self.assertEqual(len(resultado), 10)
+        self.assertEqual(resultado[0].nombre, "h11")
         nombres = [h.nombre for h in resultado]
-        self.assertNotIn("h6", nombres)
-        self.assertEqual(resultado[0].nombre, "h1")
+        self.assertNotIn("h0", nombres)
+        self.assertNotIn("h1", nombres)
 
     def test_orden_por_calificacion_descendente(self):
         hospedajes = [

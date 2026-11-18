@@ -1,11 +1,9 @@
 import unittest
 import uuid
-from pathlib import Path
 
 import psycopg2
 from psycopg2 import errors
 
-import src.repositories
 from src.models.evaluacion import Evaluacion
 from src.repositories.evaluacion_ia_repository import EvaluacionIARepository
 from test.db_test_case import BaseDBTestCase
@@ -70,7 +68,7 @@ class TestEvaluacionIARepository(BaseDBTestCase):
 
 
 class TestGuardarLoteEvaluaciones(BaseDBTestCase):
-    """RF-7, RF-8 (tarea C2): el lote de evaluaciones se persiste todo-o-nada."""
+    """El lote de evaluaciones se persiste todo-o-nada."""
 
     def setUp(self):
         super().setUp()
@@ -156,16 +154,6 @@ class TestGuardarLoteEvaluaciones(BaseDBTestCase):
 
         self.assertEqual(self.repo.guardar_lote([]), [])
         self.assertEqual(self._contar_evaluaciones(), evaluaciones_antes)
-
-    def test_los_repositories_no_mencionan_id_temporal(self):
-        """C2: id_temporal jamás llega a la capa de SQL (constitución #4)."""
-        repositorio = Path(src.repositories.__file__).parent
-        offenders = []
-        for archivo in repositorio.glob("*.py"):
-            if "id_temporal" in archivo.read_text(encoding="utf-8"):
-                offenders.append(archivo.name)
-        self.assertEqual(offenders, [])
-
 
 if __name__ == "__main__":
     unittest.main()

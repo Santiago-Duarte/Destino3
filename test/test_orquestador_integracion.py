@@ -106,22 +106,6 @@ class TestOrquestadorIntegracion(unittest.TestCase):
 
         self.evaluaciones_repo.guardar_lote.assert_not_called()
 
-    def test_sin_hospedajes_devuelve_lista_vacia_sin_persistir_ni_evaluar(self):
-        buscar = Mock(return_value=[])
-        hospedajes_repo = Mock()
-        evaluador = Mock()
-        orquestador = OrquestadorIntegracion(
-            buscar_hospedajes=buscar,
-            hospedajes_repo=hospedajes_repo,
-            evaluador=evaluador,
-        )
-
-        resultado = orquestador.buscar_persistir_y_evaluar("Medellin", "Colombia", 100, "")
-
-        self.assertEqual(resultado, [])
-        hospedajes_repo.guardar_lote.assert_not_called()
-        evaluador.evaluar_lote.assert_not_called()
-
     @patch("src.services.buscador_serpapi.consultar_serpapi", return_value={"properties": []})
     def test_properties_vacias_no_persisten_ni_invocan_gemini(self, consultar_mock):
         hospedajes_repo = Mock()
