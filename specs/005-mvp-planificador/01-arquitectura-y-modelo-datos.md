@@ -1,5 +1,7 @@
 # 01. Arquitectura de Módulos y Modelo de Datos
 
+> **Alcance V0:** este documento describe el v1 completo. Los incrementos I1–I4 implementan el corte V0 de [`plan.md`](plan.md): sin caché, sin Routes, sin evaluación ni itinerario con Gemini, y con una sola base de pruebas. Lo diferido se añade en V1.
+
 ## 1.1 Arquitectura de Módulos
 
 **Flujo general**

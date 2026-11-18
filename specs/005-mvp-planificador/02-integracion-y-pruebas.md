@@ -1,5 +1,7 @@
 # 02. Estrategia de Integración y Pruebas
 
+> **Alcance V0:** este documento describe el v1 completo. Los incrementos I1–I4 implementan el corte V0 de [`plan.md`](plan.md): sin caché, sin Routes, sin evaluación ni itinerario con Gemini, y con una sola base de pruebas. Lo diferido se añade en V1.
+
 ## 2.1 Estrategia de Integración
 
 ### 2.1.1 Cliente HTTP común
