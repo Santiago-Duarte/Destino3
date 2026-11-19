@@ -14,7 +14,7 @@ class TestObtenerConexion(unittest.TestCase):
         return {
             "ENVIRONMENT": entorno,
             "DB_HOST": "localhost",
-            "DB_PORT": "5432",
+            "DB_PORT": "5433",
             "DB_TEST_NAME": "destino3_test_db",
             "DB_TEST_USER": "destino3_testing",
             "DB_TEST_PASSWORD": "password-testing",
@@ -43,7 +43,7 @@ class TestObtenerConexion(unittest.TestCase):
 
                 conectar.assert_called_once_with(
                     host="localhost",
-                    port="5432",
+                    port="5433",
                     database=parametros_esperados[0],
                     user=parametros_esperados[1],
                     password=parametros_esperados[2],
@@ -87,7 +87,7 @@ class TestObtenerConexion(unittest.TestCase):
                 raise AssertionError("El paquete de tests no fijó ENVIRONMENT=testing")
             conectar.assert_called_once_with(
                 host="localhost",
-                port="5432",
+                port="5433",
                 database="destino3_test_db",
                 user="destino3_testing",
                 password="password-testing",

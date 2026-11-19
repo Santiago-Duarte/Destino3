@@ -36,7 +36,7 @@ class TestDemoIntegracion(unittest.TestCase):
         variables = {
             "ENVIRONMENT": "demo",
             "DB_HOST": "localhost",
-            "DB_PORT": "5432",
+            "DB_PORT": "5433",
             "DB_DEMO_NAME": "demo_db",
             "DB_DEMO_USER": "destino3_demo",
             "DB_DEMO_PASSWORD": "password-demo",
@@ -63,7 +63,7 @@ class TestDemoIntegracion(unittest.TestCase):
         self.assertEqual(resultado, 0)
         conectar.assert_called_once_with(
             host="localhost",
-            port="5432",
+            port="5433",
             database="demo_db",
             user="destino3_demo",
             password="password-demo",
