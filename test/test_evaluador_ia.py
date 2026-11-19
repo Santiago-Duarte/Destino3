@@ -3,6 +3,8 @@ import unittest
 from unittest.mock import patch
 
 from src.exceptions.Evaluacion_IA_error import EvaluacionIALoteError
+from src.models.analisis import Analisis
+from src.models.busqueda import EspecificacionBusqueda
 from src.models.hospedaje import Hospedaje
 from src.services.evaluador_ia import EvaluadorIA, preseleccionar_candidatos
 
@@ -10,8 +12,13 @@ from src.services.evaluador_ia import EvaluadorIA, preseleccionar_candidatos
 RUTA_FIXTURES = Path(__file__).parent / "fixtures"
 
 
-def crear_hospedaje(nombre, precio_noche, calificacion):
+def leer_fixture(nombre: str) -> str:
+    return (RUTA_FIXTURES / nombre).read_text(encoding="utf-8")
+
+
+def crear_hospedaje(nombre, precio_noche, calificacion, id=None):
     return Hospedaje(
+        id=id,
         nombre=nombre,
         tipo="hotel",
         precio_noche=precio_noche,
@@ -20,6 +27,14 @@ def crear_hospedaje(nombre, precio_noche, calificacion):
         url_reserva="https://hotel.example",
         destino_id=1,
     )
+
+
+def candidatos():
+    return [
+        crear_hospedaje("Hotel A", 50, 4.5, id=1),
+        crear_hospedaje("Hotel B", 60, 4.0, id=2),
+        crear_hospedaje("Hotel C", 70, 3.5, id=3),
+    ]
 
 
 class TestPreseleccionarCandidatos(unittest.TestCase):
@@ -117,93 +132,169 @@ class TestPreseleccionarCandidatos(unittest.TestCase):
         self.assertEqual(len(resultado), 1)
 
 
-class TestReintentosEvaluadorIA(unittest.TestCase):
-
-    def setUp(self):
-        self.hospedajes = [crear_hospedaje("Hotel A", 50, 4.5)]
-        self.respuesta_valida = (
-            '{"evaluaciones": [{"id_temporal": 1, '
-            '"resumen_ejecutivo": "Bueno", "puntos_fuertes": "Ubicación", '
-            '"puntos_debiles": "Precio", "score_calidad_precio": 8}]}'
-        )
+class TestAnalizar(unittest.TestCase):
 
     @patch("time.sleep")
-    @patch("src.services.evaluador_ia.settings.GEMINI_BACKOFF_BASE", 0.5)
-    @patch("src.services.evaluador_ia.settings.GEMINI_MAX_REINTENTOS", 2)
+    @patch("src.services.gemini.settings.GEMINI_BACKOFF_BASE", 0.5)
+    @patch("src.services.gemini.settings.GEMINI_MAX_REINTENTOS", 2)
     @patch("src.services.evaluador_ia.settings.GEMINI_API_KEY", "clave-prueba")
     @patch("src.services.evaluador_ia.genai.Client")
-    def test_falla_dos_veces_y_luego_devuelve_lote_valido(
-            self, cliente_mock, sleep_mock
-    ):
-        respuesta = unittest.mock.Mock(text=self.respuesta_valida)
+    def test_respuesta_valida_se_analiza_en_una_sola_llamada(self, cliente_mock, _sleep):
+        generar = cliente_mock.return_value.models.generate_content
+        generar.return_value = unittest.mock.Mock(text=leer_fixture("gemini_analisis_valida.json"))
+
+        lote = EvaluadorIA().analizar(candidatos())
+
+        self.assertEqual(len(lote), 3)
+        self.assertEqual(generar.call_count, 1)
+        prompt = generar.call_args.kwargs["contents"]
+        for id_enviado in (1, 2, 3):
+            self.assertIn(f'"hospedaje_id": {id_enviado}', prompt)
+
+    @patch("time.sleep")
+    @patch("src.services.gemini.settings.GEMINI_BACKOFF_BASE", 0.5)
+    @patch("src.services.gemini.settings.GEMINI_MAX_REINTENTOS", 2)
+    @patch("src.services.evaluador_ia.settings.GEMINI_API_KEY", "clave-prueba")
+    @patch("src.services.evaluador_ia.genai.Client")
+    def test_falla_dos_veces_y_luego_devuelve_lote_valido(self, cliente_mock, sleep_mock):
+        respuesta = unittest.mock.Mock(text=leer_fixture("gemini_analisis_valida.json"))
         generar = cliente_mock.return_value.models.generate_content
         generar.side_effect = [TimeoutError("timeout"), RuntimeError("temporal"), respuesta]
 
-        resultado = EvaluadorIA().evaluar_lote(self.hospedajes, 100, "")
+        lote = EvaluadorIA().analizar(candidatos())
 
-        self.assertIsNotNone(resultado)
+        self.assertEqual(len(lote), 3)
         self.assertEqual(generar.call_count, 3)
         self.assertEqual(sleep_mock.call_args_list[0].args, (0.5,))
         self.assertEqual(sleep_mock.call_args_list[1].args, (1.0,))
 
     @patch("time.sleep")
-    @patch("src.services.evaluador_ia.settings.GEMINI_MAX_REINTENTOS", 2)
+    @patch("src.services.gemini.settings.GEMINI_MAX_REINTENTOS", 2)
     @patch("src.services.evaluador_ia.settings.GEMINI_API_KEY", "clave-prueba")
     @patch("src.services.evaluador_ia.genai.Client")
-    def test_respuesta_invalida_agota_reintentos_y_lanza_error_de_lote(
-            self, cliente_mock, sleep_mock
-    ):
+    def test_respuesta_invalida_agota_reintentos_y_lanza_error(self, cliente_mock, sleep_mock):
         respuesta_invalida = unittest.mock.Mock(
-            text=(RUTA_FIXTURES / "gemini_respuesta_invalida.json").read_text(encoding="utf-8")
+            text=leer_fixture("gemini_analisis_invalida.json")
         )
         generar = cliente_mock.return_value.models.generate_content
         generar.return_value = respuesta_invalida
 
         with self.assertRaises(EvaluacionIALoteError) as contexto:
-            EvaluadorIA().evaluar_lote(self.hospedajes, 100, "")
+            EvaluadorIA().analizar(candidatos())
 
         self.assertIn("agotó los reintentos", str(contexto.exception))
         self.assertEqual(contexto.exception.proveedor, "Gemini")
-        self.assertEqual(contexto.exception.operacion, "evaluar_lote")
+        self.assertEqual(contexto.exception.operacion, "analizar")
         self.assertEqual(generar.call_count, 3)
         self.assertEqual(sleep_mock.call_count, 2)
 
-
-class TestLoteEvaluadorIA(unittest.TestCase):
-
+    @patch("time.sleep")
+    @patch("src.services.gemini.settings.GEMINI_MAX_REINTENTOS", 1)
     @patch("src.services.evaluador_ia.settings.GEMINI_API_KEY", "clave-prueba")
     @patch("src.services.evaluador_ia.genai.Client")
-    def test_respuesta_valida_de_fixture_se_evalua_en_una_sola_llamada(self, cliente_mock):
-        respuesta = unittest.mock.Mock(
-            text=(RUTA_FIXTURES / "gemini_respuesta_valida.json").read_text(encoding="utf-8")
-        )
+    def test_respuesta_parcial_devuelve_lo_obtenido(self, cliente_mock, _sleep):
+        parcial = unittest.mock.Mock(text="""
+            {"analisis": [
+                {"hospedaje_id": 1, "resumen_ejecutivo": "A",
+                 "puntos_fuertes": "F", "puntos_debiles": "D"},
+                {"hospedaje_id": 2, "resumen_ejecutivo": "B",
+                 "puntos_fuertes": "F", "puntos_debiles": "D"}
+            ]}
+        """)
         generar = cliente_mock.return_value.models.generate_content
-        generar.return_value = respuesta
+        generar.return_value = parcial
 
-        resultado = EvaluadorIA().evaluar_lote(
-            [crear_hospedaje("Hotel A", 50, 4.5), crear_hospedaje("Hotel B", 60, 4.0)],
-            100,
-            "",
+        lote = EvaluadorIA().analizar(candidatos())
+
+        self.assertEqual(len(lote), 2)
+        self.assertEqual(generar.call_count, 2)
+
+
+class TestPuntuar(unittest.TestCase):
+
+    def _espec(self):
+        return EspecificacionBusqueda(
+            ciudad="Medellin",
+            pais="Colombia",
+            presupuesto_max_noche=100,
+            preferencias="cerca del metro",
         )
 
-        self.assertIsNotNone(resultado)
-        self.assertEqual(len(resultado[0].evaluaciones), 3)
-        self.assertEqual(generar.call_count, 1)
-
+    @patch("time.sleep")
     @patch("src.services.evaluador_ia.settings.GEMINI_API_KEY", "clave-prueba")
     @patch("src.services.evaluador_ia.genai.Client")
-    def test_hospedaje_sin_resenas_usa_la_informacion_disponible(self, cliente_mock):
-        respuesta = unittest.mock.Mock(
-            text=(RUTA_FIXTURES / "gemini_respuesta_valida.json").read_text(encoding="utf-8")
+    def test_respuesta_valida_devuelve_doble_score_por_candidato(self, cliente_mock, _sleep):
+        generar = cliente_mock.return_value.models.generate_content
+        generar.return_value = unittest.mock.Mock(
+            text=leer_fixture("gemini_puntuacion_valida.json")
+        )
+
+        lote = EvaluadorIA().puntuar(candidatos(), {}, self._espec())
+
+        self.assertEqual(len(lote), 3)
+        self.assertEqual(lote.hospedaje_ids(), {1, 2, 3})
+        self.assertEqual(lote.puntuaciones[0].score_cumplimiento, 10)
+        self.assertEqual(lote.puntuaciones[0].score_calidad, 9)
+
+    @patch("time.sleep")
+    @patch("src.services.evaluador_ia.settings.GEMINI_API_KEY", "clave-prueba")
+    @patch("src.services.evaluador_ia.genai.Client")
+    def test_el_prompt_lleva_las_especificaciones_y_el_analisis_previo(self, cliente_mock, _sleep):
+        generar = cliente_mock.return_value.models.generate_content
+        generar.return_value = unittest.mock.Mock(
+            text=leer_fixture("gemini_puntuacion_valida.json")
+        )
+        analisis_previo = {1: Analisis(
+            resumen_ejecutivo="Hotel a dos cuadras del metro",
+            puntos_fuertes="Metro a 200 m",
+            puntos_debiles="Pocas amenidades",
+            hospedaje_id=1,
+        )}
+
+        EvaluadorIA().puntuar(candidatos(), analisis_previo, self._espec())
+
+        prompt = generar.call_args.kwargs["contents"]
+        self.assertIn("Medellin, Colombia", prompt)
+        self.assertIn("USD $100 por noche", prompt)
+        self.assertIn("cerca del metro", prompt)
+        self.assertIn("Metro a 200 m", prompt)
+
+    @patch("time.sleep")
+    @patch("src.services.gemini.settings.GEMINI_MAX_REINTENTOS", 2)
+    @patch("src.services.evaluador_ia.settings.GEMINI_API_KEY", "clave-prueba")
+    @patch("src.services.evaluador_ia.genai.Client")
+    def test_respuesta_invalida_agota_reintentos_y_lanza_error(self, cliente_mock, sleep_mock):
+        respuesta_invalida = unittest.mock.Mock(
+            text=leer_fixture("gemini_puntuacion_invalida.json")
         )
         generar = cliente_mock.return_value.models.generate_content
-        generar.return_value = respuesta
-        hospedaje = crear_hospedaje("Hotel Sin Resenas", 50, 4.5)
+        generar.return_value = respuesta_invalida
 
-        resultado = EvaluadorIA().evaluar_lote([hospedaje], 100, "")
+        with self.assertRaises(EvaluacionIALoteError) as contexto:
+            EvaluadorIA().puntuar(candidatos(), {}, self._espec())
 
-        self.assertIsNotNone(resultado)
-        self.assertEqual(generar.call_count, 1)
+        self.assertEqual(contexto.exception.operacion, "puntuar")
+        self.assertEqual(generar.call_count, 3)
+        self.assertEqual(sleep_mock.call_count, 2)
+
+    @patch("time.sleep")
+    @patch("src.services.gemini.settings.GEMINI_MAX_REINTENTOS", 1)
+    @patch("src.services.evaluador_ia.settings.GEMINI_API_KEY", "clave-prueba")
+    @patch("src.services.evaluador_ia.genai.Client")
+    def test_devuelve_la_respuesta_parcial_si_nunca_llega_completa(self, cliente_mock, _sleep):
+        parcial = unittest.mock.Mock(text="""
+            {"puntuaciones": [
+                {"hospedaje_id": 1, "score_calidad": 8, "score_cumplimiento": 9,
+                 "requisitos_cumplidos": ["cerca del metro"], "requisitos_faltantes": []}
+            ]}
+        """)
+        generar = cliente_mock.return_value.models.generate_content
+        generar.return_value = parcial
+
+        lote = EvaluadorIA().puntuar(candidatos(), {}, self._espec())
+
+        self.assertEqual(len(lote), 1)
+        self.assertEqual(generar.call_count, 2)
 
 
 if __name__ == "__main__":

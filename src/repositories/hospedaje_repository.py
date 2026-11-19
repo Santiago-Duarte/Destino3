@@ -5,6 +5,9 @@ from src.repositories.base_repository import BaseRepository
 class HospedajeRepository(BaseRepository):
 
     def guardar_lote(self, hospedajes: list[Hospedaje]) -> list[int]:
+        if not hospedajes:
+            return []
+
         insertar_hospedaje = """
             INSERT INTO hospedajes (
                 nombre, tipo, precio_noche, calificacion, direccion,
@@ -15,8 +18,15 @@ class HospedajeRepository(BaseRepository):
         """
 
         with self._transaccion() as cursor:
+            existentes = self._existentes_por_token(cursor, hospedajes)
             ids_generados = []
             for hospedaje in hospedajes:
+                id_ya_persistido = existentes.get(hospedaje.google_place_id)
+                if id_ya_persistido is not None:
+                    # Ya se guardó en una búsqueda anterior: se reutiliza en vez de duplicar.
+                    ids_generados.append(id_ya_persistido)
+                    continue
+
                 cursor.execute(
                     insertar_hospedaje,
                     (
@@ -28,6 +38,18 @@ class HospedajeRepository(BaseRepository):
                 )
                 ids_generados.append(cursor.fetchone()[0])
             return ids_generados
+
+    @staticmethod
+    def _existentes_por_token(cursor, hospedajes: list[Hospedaje]) -> dict[str, int]:
+        tokens = [hospedaje.google_place_id for hospedaje in hospedajes if hospedaje.google_place_id]
+        if not tokens:
+            return {}
+
+        cursor.execute(
+            "SELECT id, google_place_id FROM hospedajes WHERE google_place_id = ANY(%s);",
+            (tokens,),
+        )
+        return {fila[1]: fila[0] for fila in cursor.fetchall()}
 
     def obtener_por_destino(self, destino_id: int) -> list[Hospedaje]:
         with self._transaccion() as cursor:

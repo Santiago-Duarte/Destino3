@@ -1,0 +1,11 @@
+{
+  "puntuaciones": [
+    {
+      "hospedaje_id": 1,
+      "score_calidad": 11,
+      "score_cumplimiento": 10,
+      "requisitos_cumplidos": ["presupuesto hasta 100 USD"],
+      "requisitos_faltantes": []
+    }
+  ]
+}

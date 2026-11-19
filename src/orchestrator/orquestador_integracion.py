@@ -1,20 +1,54 @@
-from dataclasses import dataclass
-from typing import Callable
+import logging
+from collections.abc import Callable
+from dataclasses import dataclass, field
 
-from src.exceptions import PersistenciaError
-from src.models.evaluacion import Evaluacion
-from src.models.evaluacion_ia import LoteEvaluacionesIA
+from src.exceptions.Evaluacion_IA_error import EvaluacionIALoteError
+from src.models.analisis import Analisis
+from src.models.busqueda import EspecificacionBusqueda
 from src.models.hospedaje import Hospedaje
-from src.repositories.evaluacion_ia_repository import EvaluacionIARepository
+from src.repositories.analisis_ia_repository import AnalisisIARepository
 from src.repositories.hospedaje_repository import HospedajeRepository
 from src.services.buscador_serpapi import buscar_hospedajes
-from src.services.evaluador_ia import EvaluadorIA
+from src.services.evaluador_ia import EvaluadorIA, preseleccionar_candidatos
+from src.services.interpretador_ia import InterpretadorIA
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
-class ResultadoIntegracion:
-    hospedajes: list[Hospedaje]
-    resultado_ia: tuple[LoteEvaluacionesIA, dict[int, Hospedaje]] | None
+class Candidato:
+    hospedaje: Hospedaje
+    analisis: Analisis | None = None
+    score_calidad: int | None = None
+    score_cumplimiento: int | None = None
+    requisitos_cumplidos: list[str] = field(default_factory=list)
+    requisitos_faltantes: list[str] = field(default_factory=list)
+
+
+@dataclass
+class ResultadoBusqueda:
+    especificacion: EspecificacionBusqueda
+    candidatos: list[Candidato]  # ya rankeados
+
+    def mejores(self, cantidad: int = 3) -> list[Candidato]:
+        puntuados = [candidato for candidato in self.candidatos
+                     if candidato.score_cumplimiento is not None]
+        if self.especificacion.tiene_requisitos():
+            puntuados = [candidato for candidato in puntuados if candidato.requisitos_cumplidos]
+        return puntuados[:cantidad]
+
+
+def rankear_candidatos(candidatos: list[Candidato]) -> list[Candidato]:
+    """Cumplimiento primero y después calidad; sin puntaje quedan al final."""
+    return sorted(
+        candidatos,
+        key=lambda candidato: (
+            candidato.score_cumplimiento is not None,
+            candidato.score_cumplimiento or 0,
+            candidato.score_calidad or 0,
+        ),
+        reverse=True,
+    )
 
 
 class OrquestadorIntegracion:
@@ -22,58 +56,102 @@ class OrquestadorIntegracion:
     def __init__(
             self,
             buscar_hospedajes: Callable[[str, str, float | None], list[Hospedaje]] = buscar_hospedajes,
+            interpretar: Callable[[str], EspecificacionBusqueda] | None = None,
             hospedajes_repo: HospedajeRepository | None = None,
-            evaluaciones_repo: EvaluacionIARepository | None = None,
+            analisis_repo: AnalisisIARepository | None = None,
             evaluador: EvaluadorIA | None = None,
     ) -> None:
         self._buscar_hospedajes = buscar_hospedajes
+        self._interpretar = interpretar
         self._hospedajes_repo = hospedajes_repo
-        self._evaluaciones_repo = evaluaciones_repo
+        self._analisis_repo = analisis_repo
         self._evaluador = evaluador
 
-    def buscar_persistir_y_evaluar(
-            self,
-            ciudad: str,
-            pais: str,
-            presupuesto_maximo_noche: float,
-            preferencias: str,
-    ) -> ResultadoIntegracion | list:
-        hospedajes = self._buscar_hospedajes(ciudad, pais, presupuesto_maximo_noche)
+    def buscar_desde_frase(self, frase: str) -> ResultadoBusqueda:
+        interpretar = self._interpretar or InterpretadorIA().interpretar
+        espec = interpretar(frase)
+
+        hospedajes = self._buscar_hospedajes(
+            espec.ciudad, espec.pais, espec.presupuesto_max_noche
+        )
         if not hospedajes:
-            return []
+            return ResultadoBusqueda(espec, [])
 
         repositorio_hospedajes = self._hospedajes_repo or HospedajeRepository()
-        ids_generados = repositorio_hospedajes.guardar_lote(hospedajes)
-        for hospedaje, id_generado in zip(hospedajes, ids_generados):
+        for hospedaje, id_generado in zip(
+                hospedajes, repositorio_hospedajes.guardar_lote(hospedajes)
+        ):
             hospedaje.id = id_generado
 
-        evaluador = self._evaluador or EvaluadorIA()
-        resultado_ia = evaluador.evaluar_lote(
-            hospedajes, presupuesto_maximo_noche, preferencias
+        presupuesto = espec.presupuesto_max_noche or float("inf")
+        candidatos = [
+            Candidato(hospedaje=hospedaje)
+            for hospedaje in preseleccionar_candidatos(hospedajes, presupuesto)
+        ]
+        if not candidatos:
+            return ResultadoBusqueda(espec, [])
+
+        self._completar_analisis(candidatos)
+        self._puntuar(candidatos, espec)
+        return ResultadoBusqueda(espec, rankear_candidatos(candidatos))
+
+    def _completar_analisis(self, candidatos: list[Candidato]) -> None:
+        repositorio = self._analisis_repo or AnalisisIARepository()
+        guardados = repositorio.obtener_por_hospedajes(
+            [candidato.hospedaje.id for candidato in candidatos]
         )
-        return ResultadoIntegracion(hospedajes=hospedajes, resultado_ia=resultado_ia)
+        for candidato in candidatos:
+            candidato.analisis = guardados.get(candidato.hospedaje.id)
 
-    def persistir_evaluaciones(self, resultado: ResultadoIntegracion) -> list[Evaluacion]:
-        if resultado.resultado_ia is None:
-            return []
+        sin_analisis = [candidato for candidato in candidatos if candidato.analisis is None]
+        if not sin_analisis:
+            return
 
-        lote_ia, hospedaje_por_id_temporal = resultado.resultado_ia
-        evaluaciones = []
-        for evaluacion_ia in lote_ia.evaluaciones:
-            hospedaje = hospedaje_por_id_temporal.get(evaluacion_ia.id_temporal)
-            if hospedaje is None:
-                raise PersistenciaError(
-                    "PostgreSQL",
-                    "persistir_evaluaciones",
-                    f"No existe hospedaje para id_temporal {evaluacion_ia.id_temporal}",
+        try:
+            lote = self._obtener_evaluador().analizar(
+                [candidato.hospedaje for candidato in sin_analisis]
+            )
+        except EvaluacionIALoteError as error:
+            # Sin análisis la búsqueda sigue: esos candidatos se puntúan con sus datos crudos.
+            logger.warning("No se pudo analizar el lote de candidatos: %s", error)
+            return
+
+        esperados = {candidato.hospedaje.id for candidato in sin_analisis}
+        nuevos = [
+            Analisis.desde_ia(item)
+            for item in lote.analisis
+            if item.hospedaje_id in esperados and item.hospedaje_id not in guardados
+        ]
+        repositorio.guardar_lote(nuevos)
+
+        guardados.update({item.hospedaje_id: item for item in nuevos})
+        for candidato in sin_analisis:
+            candidato.analisis = guardados.get(candidato.hospedaje.id)
+
+    def _puntuar(self, candidatos: list[Candidato], espec: EspecificacionBusqueda) -> None:
+        lote = self._obtener_evaluador().puntuar(
+            [candidato.hospedaje for candidato in candidatos],
+            {candidato.hospedaje.id: candidato.analisis
+             for candidato in candidatos if candidato.analisis is not None},
+            espec,
+        )
+        puntuaciones = {puntuacion.hospedaje_id: puntuacion
+                        for puntuacion in lote.puntuaciones}
+
+        for candidato in candidatos:
+            puntuacion = puntuaciones.get(candidato.hospedaje.id)
+            if puntuacion is None:
+                logger.warning(
+                    "Sin puntaje para %s; queda al final del ranking",
+                    candidato.hospedaje.nombre,
                 )
-            evaluaciones.append(Evaluacion.desde_ia(evaluacion_ia, hospedaje.id))
+                continue
+            candidato.score_calidad = puntuacion.score_calidad
+            candidato.score_cumplimiento = puntuacion.score_cumplimiento
+            candidato.requisitos_cumplidos = puntuacion.requisitos_cumplidos
+            candidato.requisitos_faltantes = puntuacion.requisitos_faltantes
 
-        if not evaluaciones:
-            return []
-
-        repositorio_evaluaciones = self._evaluaciones_repo or EvaluacionIARepository()
-        ids_generados = repositorio_evaluaciones.guardar_lote(evaluaciones)
-        for evaluacion, id_generado in zip(evaluaciones, ids_generados):
-            evaluacion.id = id_generado
-        return evaluaciones
+    def _obtener_evaluador(self) -> EvaluadorIA:
+        if self._evaluador is None:
+            self._evaluador = EvaluadorIA()
+        return self._evaluador

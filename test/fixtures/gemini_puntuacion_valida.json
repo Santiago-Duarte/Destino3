@@ -1,0 +1,25 @@
+{
+  "puntuaciones": [
+    {
+      "hospedaje_id": 1,
+      "score_calidad": 9,
+      "score_cumplimiento": 10,
+      "requisitos_cumplidos": ["presupuesto hasta 100 USD", "cerca del metro"],
+      "requisitos_faltantes": []
+    },
+    {
+      "hospedaje_id": 2,
+      "score_calidad": 8,
+      "score_cumplimiento": 7,
+      "requisitos_cumplidos": ["presupuesto hasta 100 USD"],
+      "requisitos_faltantes": ["cerca del metro"]
+    },
+    {
+      "hospedaje_id": 3,
+      "score_calidad": 7,
+      "score_cumplimiento": 4,
+      "requisitos_cumplidos": ["presupuesto hasta 100 USD"],
+      "requisitos_faltantes": ["cerca del metro"]
+    }
+  ]
+}

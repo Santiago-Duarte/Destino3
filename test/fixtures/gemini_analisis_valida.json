@@ -1,0 +1,22 @@
+{
+  "analisis": [
+    {
+      "hospedaje_id": 1,
+      "resumen_ejecutivo": "Hotel bien ubicado y con buena relación calidad-precio.",
+      "puntos_fuertes": "A dos cuadras del metro; desayuno incluido; limpieza.",
+      "puntos_debiles": "Habitaciones pequeñas."
+    },
+    {
+      "hospedaje_id": 2,
+      "resumen_ejecutivo": "Alojamiento cómodo para una estancia corta.",
+      "puntos_fuertes": "Precio bajo; atención del personal.",
+      "puntos_debiles": "Pocas amenidades."
+    },
+    {
+      "hospedaje_id": 3,
+      "resumen_ejecutivo": "Opción tranquila fuera del centro.",
+      "puntos_fuertes": "Espacio; silencio.",
+      "puntos_debiles": "Requiere transporte para llegar al centro."
+    }
+  ]
+}

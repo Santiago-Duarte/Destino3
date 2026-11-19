@@ -275,6 +275,7 @@ def mapear_hospedajes(
             calificacion=propiedad.get("overall_rating", 0.0),
             direccion=propiedad.get("description", "Sin dirección disponible"),
             url_reserva=url_reserva,
+            google_place_id=token_propiedad or None,
         ))
 
     return hospedajes

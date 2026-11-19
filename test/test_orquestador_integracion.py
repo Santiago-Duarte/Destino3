@@ -1,16 +1,20 @@
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
-from src.exceptions import PersistenciaError
-from src.models.evaluacion import Evaluacion
-from src.models.evaluacion_ia import LoteEvaluacionesIA
-from src.models.evaluacion_ia import EvaluacionIAOutput
-from src.models.hospedaje import Hospedaje
-from src.orchestrator.orquestador_integracion import (
-    ResultadoIntegracion,
-    OrquestadorIntegracion,
+from src.exceptions.Evaluacion_IA_error import EvaluacionIALoteError
+from src.models.analisis import Analisis
+from src.models.analisis_ia import (
+    AnalisisIAOutput,
+    LoteAnalisisIA,
+    LotePuntuacionesIA,
+    PuntuacionIAOutput,
 )
-from src.services.buscador_serpapi import buscar_hospedajes
+from src.models.busqueda import EspecificacionBusqueda
+from src.models.hospedaje import Hospedaje
+from src.orchestrator.orquestador_integracion import OrquestadorIntegracion
+
+
+FRASE = "quiero hoteles en Medellin hasta 100 USD cerca del metro"
 
 
 def crear_hospedaje(nombre: str) -> Hospedaje:
@@ -25,103 +29,193 @@ def crear_hospedaje(nombre: str) -> Hospedaje:
     )
 
 
-class TestOrquestadorIntegracion(unittest.TestCase):
+def analisis_de(hospedaje_id: int, resumen: str = "Resumen") -> AnalisisIAOutput:
+    return AnalisisIAOutput(
+        hospedaje_id=hospedaje_id,
+        resumen_ejecutivo=resumen,
+        puntos_fuertes="Fuertes",
+        puntos_debiles="Débiles",
+    )
+
+
+def puntuacion_de(
+        hospedaje_id: int,
+        calidad: int,
+        cumplimiento: int,
+        cumplidos=("presupuesto hasta 100 USD",),
+        faltantes=(),
+) -> PuntuacionIAOutput:
+    return PuntuacionIAOutput(
+        hospedaje_id=hospedaje_id,
+        score_calidad=calidad,
+        score_cumplimiento=cumplimiento,
+        requisitos_cumplidos=list(cumplidos),
+        requisitos_faltantes=list(faltantes),
+    )
+
+
+class TestBuscarDesdeFrase(unittest.TestCase):
 
     def setUp(self):
+        self.espec = EspecificacionBusqueda(
+            ciudad="Medellin",
+            pais="Colombia",
+            presupuesto_max_noche=100,
+            preferencias="cerca del metro",
+        )
+        self.interpretar = Mock(return_value=self.espec)
         self.buscar = Mock(return_value=[crear_hospedaje("Hotel A"), crear_hospedaje("Hotel B")])
         self.hospedajes_repo = Mock()
         self.hospedajes_repo.guardar_lote.return_value = [101, 102]
-        self.evaluaciones_repo = Mock()
-        self.evaluaciones_repo.guardar_lote.return_value = [201]
+        self.analisis_repo = Mock()
+        self.analisis_repo.obtener_por_hospedajes.return_value = {}
         self.evaluador = Mock()
-        self.resultado_ia = (LoteEvaluacionesIA(evaluaciones=[]), {})
-        self.evaluador.evaluar_lote.return_value = self.resultado_ia
+        self.evaluador.analizar.return_value = LoteAnalisisIA(analisis=[
+            analisis_de(101, "Análisis A"),
+            analisis_de(102, "Análisis B"),
+        ])
+        self.evaluador.puntuar.return_value = LotePuntuacionesIA(puntuaciones=[
+            puntuacion_de(101, calidad=8, cumplimiento=5,
+                          faltantes=["cerca del metro"]),
+            puntuacion_de(102, calidad=7, cumplimiento=9,
+                          cumplidos=("presupuesto hasta 100 USD", "cerca del metro")),
+        ])
         self.orquestador = OrquestadorIntegracion(
             buscar_hospedajes=self.buscar,
+            interpretar=self.interpretar,
             hospedajes_repo=self.hospedajes_repo,
-            evaluaciones_repo=self.evaluaciones_repo,
+            analisis_repo=self.analisis_repo,
             evaluador=self.evaluador,
         )
 
-    def test_busca_persiste_con_ids_reales_y_evalua_en_un_lote(self):
-        resultado = self.orquestador.buscar_persistir_y_evaluar("Medellin", "Colombia", 100, "cerca al parque")
+    def test_interpreta_busca_persiste_analiza_puntua_y_ordena(self):
+        resultado = self.orquestador.buscar_desde_frase(FRASE)
 
-        self.assertIsInstance(resultado, ResultadoIntegracion)
-        self.assertEqual([h.id for h in resultado.hospedajes], [101, 102])
-        self.assertIs(resultado.resultado_ia, self.resultado_ia)
+        self.interpretar.assert_called_once_with(FRASE)
         self.buscar.assert_called_once_with("Medellin", "Colombia", 100)
-        self.hospedajes_repo.guardar_lote.assert_called_once_with(resultado.hospedajes)
-        self.evaluador.evaluar_lote.assert_called_once_with(
-            resultado.hospedajes, 100, "cerca al parque"
+        self.assertEqual(
+            [candidato.hospedaje.id for candidato in resultado.candidatos],
+            [102, 101],
+        )
+        self.assertEqual(
+            [candidato.hospedaje.id for candidato in resultado.mejores()],
+            [102, 101],
+        )
+        self.assertEqual(resultado.candidatos[0].analisis.resumen_ejecutivo, "Análisis B")
+
+    def test_persiste_el_analisis_nuevo_de_cada_candidato(self):
+        self.orquestador.buscar_desde_frase(FRASE)
+
+        self.evaluador.analizar.assert_called_once()
+        ids_analizados = [hospedaje.id for hospedaje in
+                          self.evaluador.analizar.call_args.args[0]]
+        self.assertEqual(ids_analizados, [101, 102])
+
+        guardados = self.analisis_repo.guardar_lote.call_args.args[0]
+        self.assertEqual([item.hospedaje_id for item in guardados], [101, 102])
+        self.assertIsInstance(guardados[0], Analisis)
+
+    def test_reutiliza_el_analisis_guardado_sin_volver_a_llamar_a_la_ia(self):
+        self.analisis_repo.obtener_por_hospedajes.return_value = {
+            101: Analisis("Análisis guardado A", "Fuertes", "Débiles", 101),
+            102: Analisis("Análisis guardado B", "Fuertes", "Débiles", 102),
+        }
+
+        resultado = self.orquestador.buscar_desde_frase(FRASE)
+
+        self.evaluador.analizar.assert_not_called()
+        self.assertIsNone(self.analisis_repo.guardar_lote.call_args)
+        self.assertEqual(
+            [candidato.analisis.resumen_ejecutivo for candidato in resultado.candidatos],
+            ["Análisis guardado B", "Análisis guardado A"],
         )
 
-    def test_persistir_evaluaciones_mapea_id_temporal_a_hospedaje_id_real(self):
-        hospedaje = crear_hospedaje("Hotel evaluado")
-        hospedaje.id = 101
-        evaluacion_ia = EvaluacionIAOutput(
-            id_temporal=1,
-            resumen_ejecutivo="Bueno",
-            puntos_fuertes="Ubicación",
-            puntos_debiles="Precio",
-            score_calidad_precio=8,
-        )
-        resultado = ResultadoIntegracion(
-            hospedajes=[hospedaje],
-            resultado_ia=(LoteEvaluacionesIA(evaluaciones=[evaluacion_ia]), {1: hospedaje}),
-        )
+    def test_sin_hospedajes_no_persiste_ni_evalua(self):
+        self.buscar.return_value = []
 
-        evaluaciones = self.orquestador.persistir_evaluaciones(resultado)
+        resultado = self.orquestador.buscar_desde_frase(FRASE)
 
-        self.assertEqual(len(evaluaciones), 1)
-        self.assertIsInstance(evaluaciones[0], Evaluacion)
-        self.assertEqual(evaluaciones[0].hospedaje_id, 101)
-        self.assertEqual(evaluaciones[0].id, 201)
-        self.evaluaciones_repo.guardar_lote.assert_called_once_with(evaluaciones)
+        self.assertEqual(resultado.candidatos, [])
+        self.assertEqual(resultado.mejores(), [])
+        self.hospedajes_repo.guardar_lote.assert_not_called()
+        self.evaluador.analizar.assert_not_called()
+        self.evaluador.puntuar.assert_not_called()
 
-    def test_fallo_ia_no_persiste_y_devuelve_lista_vacia(self):
-        resultado = ResultadoIntegracion(hospedajes=[crear_hospedaje("Hotel")], resultado_ia=None)
-
-        evaluaciones = self.orquestador.persistir_evaluaciones(resultado)
-
-        self.assertEqual(evaluaciones, [])
-        self.evaluaciones_repo.guardar_lote.assert_not_called()
-
-    def test_id_temporal_huerfano_aborta_sin_persistir_parcialmente(self):
-        hospedaje = crear_hospedaje("Hotel evaluado")
-        hospedaje.id = 101
-        evaluacion_ia = EvaluacionIAOutput(
-            id_temporal=99,
-            resumen_ejecutivo="Bueno",
-            puntos_fuertes="Ubicación",
-            puntos_debiles="Precio",
-            score_calidad_precio=8,
-        )
-        resultado = ResultadoIntegracion(
-            hospedajes=[hospedaje],
-            resultado_ia=(LoteEvaluacionesIA(evaluaciones=[evaluacion_ia]), {1: hospedaje}),
+    def test_candidato_sin_puntaje_queda_al_final_del_ranking(self):
+        self.evaluador.puntuar.return_value = LotePuntuacionesIA(
+            puntuaciones=[puntuacion_de(101, calidad=8, cumplimiento=4)]
         )
 
-        with self.assertRaises(PersistenciaError):
-            self.orquestador.persistir_evaluaciones(resultado)
+        resultado = self.orquestador.buscar_desde_frase(FRASE)
 
-        self.evaluaciones_repo.guardar_lote.assert_not_called()
-
-    @patch("src.services.buscador_serpapi.consultar_serpapi", return_value={"properties": []})
-    def test_properties_vacias_no_persisten_ni_invocan_gemini(self, consultar_mock):
-        hospedajes_repo = Mock()
-        evaluador = Mock()
-        orquestador = OrquestadorIntegracion(
-            buscar_hospedajes=buscar_hospedajes,
-            hospedajes_repo=hospedajes_repo,
-            evaluador=evaluador,
+        self.assertEqual(
+            [candidato.hospedaje.id for candidato in resultado.candidatos],
+            [101, 102],
+        )
+        self.assertIsNone(resultado.candidatos[1].score_cumplimiento)
+        self.assertEqual(
+            [candidato.hospedaje.id for candidato in resultado.mejores()],
+            [101],
         )
 
-        resultado = orquestador.buscar_persistir_y_evaluar("Medellin", "Colombia", 100, "")
+    def test_los_que_no_cumplen_ningun_requisito_no_entran_al_top(self):
+        self.evaluador.puntuar.return_value = LotePuntuacionesIA(puntuaciones=[
+            puntuacion_de(101, calidad=9, cumplimiento=3,
+                          cumplidos=(), faltantes=("cerca del metro",)),
+            puntuacion_de(102, calidad=6, cumplimiento=8,
+                          cumplidos=("cerca del metro",)),
+        ])
 
-        self.assertEqual(resultado, [])
-        consultar_mock.assert_called_once_with("Medellin", "Colombia", 100)
-        hospedajes_repo.guardar_lote.assert_not_called()
-        evaluador.evaluar_lote.assert_not_called()
+        resultado = self.orquestador.buscar_desde_frase(FRASE)
+
+        self.assertEqual(
+            [candidato.hospedaje.id for candidato in resultado.candidatos],
+            [102, 101],
+        )
+        self.assertEqual(
+            [candidato.hospedaje.id for candidato in resultado.mejores()],
+            [102],
+        )
+
+    def test_sin_requisitos_en_la_frase_entran_todos_los_puntuados(self):
+        self.interpretar.return_value = EspecificacionBusqueda(
+            ciudad="Medellin", pais="Colombia"
+        )
+        self.evaluador.puntuar.return_value = LotePuntuacionesIA(puntuaciones=[
+            puntuacion_de(101, calidad=9, cumplimiento=5, cumplidos=()),
+            puntuacion_de(102, calidad=6, cumplimiento=4, cumplidos=()),
+        ])
+
+        resultado = self.orquestador.buscar_desde_frase("hoteles en Medellin")
+
+        self.buscar.assert_called_once_with("Medellin", "Colombia", None)
+        self.assertEqual(len(resultado.mejores()), 2)
+
+    def test_fallo_de_la_ia_al_analizar_no_interrumpe_la_busqueda(self):
+        self.evaluador.analizar.side_effect = EvaluacionIALoteError("analizar", "falló")
+
+        resultado = self.orquestador.buscar_desde_frase(FRASE)
+
+        self.assertEqual(len(resultado.candidatos), 2)
+        self.assertIsNone(resultado.candidatos[0].analisis)
+        self.evaluador.puntuar.assert_called_once()
+        self.assertEqual(len(resultado.mejores()), 2)
+
+    def test_fallo_de_la_ia_al_puntuar_propaga_el_error(self):
+        self.evaluador.puntuar.side_effect = EvaluacionIALoteError("puntuar", "falló")
+
+        with self.assertRaises(EvaluacionIALoteError):
+            self.orquestador.buscar_desde_frase(FRASE)
+
+    def test_frase_sin_ciudad_falla_antes_de_buscar(self):
+        self.interpretar.side_effect = ValueError(
+            "La frase no indica la ciudad o el país de la búsqueda."
+        )
+
+        with self.assertRaises(ValueError):
+            self.orquestador.buscar_desde_frase("quiero hoteles baratos")
+
+        self.buscar.assert_not_called()
 
 
 if __name__ == "__main__":
