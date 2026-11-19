@@ -4,6 +4,9 @@ import argparse
 import logging
 import os
 
+# Importar settings carga el .env antes de leer ENVIRONMENT.
+from src.config import settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -30,7 +33,6 @@ def ejecutar_demo(argumentos: argparse.Namespace) -> int:
         logger.error("El demo de integración requiere ENVIRONMENT=demo.")
         return 1
 
-    from src.config import settings
     from src.orchestrator.orquestador_integracion import OrquestadorIntegracion
 
     if not settings.SERPAPI_KEY or not settings.GEMINI_API_KEY:
