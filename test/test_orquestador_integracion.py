@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import Mock
 
-from src.exceptions.Evaluacion_IA_error import EvaluacionIALoteError
+from src.exceptions.LoteIAError import LoteIAError
 from src.models.analisis import Analisis
 from src.models.analisis_ia import (
     AnalisisIAOutput,
@@ -192,7 +192,7 @@ class TestBuscarDesdeFrase(unittest.TestCase):
         self.assertEqual(len(resultado.mejores()), 2)
 
     def test_fallo_de_la_ia_al_analizar_no_interrumpe_la_busqueda(self):
-        self.evaluador.analizar.side_effect = EvaluacionIALoteError("analizar", "falló")
+        self.evaluador.analizar.side_effect = LoteIAError("analizar", "falló")
 
         resultado = self.orquestador.buscar_desde_frase(FRASE)
 
@@ -201,11 +201,19 @@ class TestBuscarDesdeFrase(unittest.TestCase):
         self.evaluador.puntuar.assert_called_once()
         self.assertEqual(len(resultado.mejores()), 2)
 
-    def test_fallo_de_la_ia_al_puntuar_propaga_el_error(self):
-        self.evaluador.puntuar.side_effect = EvaluacionIALoteError("puntuar", "falló")
+    def test_fallo_de_la_ia_al_puntuar_conserva_los_candidatos_sin_puntaje(self):
+        self.evaluador.puntuar.side_effect = LoteIAError("puntuar", "falló")
 
-        with self.assertRaises(EvaluacionIALoteError):
-            self.orquestador.buscar_desde_frase(FRASE)
+        resultado = self.orquestador.buscar_desde_frase(FRASE)
+
+        self.assertEqual(
+            [candidato.hospedaje.nombre for candidato in resultado.candidatos],
+            ["Hotel A", "Hotel B"],
+        )
+        self.assertTrue(
+            all(candidato.score_cumplimiento is None for candidato in resultado.candidatos)
+        )
+        self.assertEqual(resultado.mejores(), [])
 
     def test_frase_sin_ciudad_falla_antes_de_buscar(self):
         self.interpretar.side_effect = ValueError(

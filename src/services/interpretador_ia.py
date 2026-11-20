@@ -1,6 +1,3 @@
-from google import genai
-
-from src.config import settings
 from src.models.busqueda import EspecificacionBusqueda
 from src.services import gemini
 
@@ -22,9 +19,7 @@ def _prompt_frase(frase: str) -> str:
 class InterpretadorIA:
 
     def __init__(self) -> None:
-        if not settings.GEMINI_API_KEY:
-            raise ValueError("Falta la credencial del proveedor de IA")
-        self._cliente = genai.Client(api_key=settings.GEMINI_API_KEY)
+        self._cliente = gemini.crear_cliente()
 
     def interpretar(self, frase: str) -> EspecificacionBusqueda:
         espec = gemini.generar(

@@ -1,8 +1,5 @@
 import json
 
-from google import genai
-
-from src.config import settings
 from src.models.analisis import Analisis
 from src.models.analisis_ia import LoteAnalisisIA, LotePuntuacionesIA
 from src.models.busqueda import EspecificacionBusqueda
@@ -36,7 +33,6 @@ def _resumen_de(hospedaje: Hospedaje) -> dict:
         "precio_noche": hospedaje.precio_noche,
         "calificacion": hospedaje.calificacion,
         "direccion": hospedaje.direccion,
-        "url_reserva": hospedaje.url_reserva,
     }
 
 
@@ -80,9 +76,7 @@ def _prompt_puntuacion(resumen_candidatos: list[dict], espec: EspecificacionBusq
 class EvaluadorIA:
 
     def __init__(self) -> None:
-        if not settings.GEMINI_API_KEY:
-            raise ValueError("Falta la credencial del proveedor de IA")
-        self._cliente = genai.Client(api_key=settings.GEMINI_API_KEY)
+        self._cliente = gemini.crear_cliente()
 
     def analizar(self, hospedajes: list[Hospedaje]) -> LoteAnalisisIA:
         """Descripción intrínseca de los candidatos; se persiste y se reutiliza."""

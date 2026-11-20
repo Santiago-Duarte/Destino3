@@ -2,7 +2,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from src.exceptions.Evaluacion_IA_error import EvaluacionIALoteError
+from src.exceptions.LoteIAError import LoteIAError
 from src.models.analisis import Analisis
 from src.models.busqueda import EspecificacionBusqueda
 from src.models.hospedaje import Hospedaje
@@ -137,8 +137,8 @@ class TestAnalizar(unittest.TestCase):
     @patch("time.sleep")
     @patch("src.services.gemini.settings.GEMINI_BACKOFF_BASE", 0.5)
     @patch("src.services.gemini.settings.GEMINI_MAX_REINTENTOS", 2)
-    @patch("src.services.evaluador_ia.settings.GEMINI_API_KEY", "clave-prueba")
-    @patch("src.services.evaluador_ia.genai.Client")
+    @patch("src.services.gemini.settings.GEMINI_API_KEY", "clave-prueba")
+    @patch("src.services.gemini.genai.Client")
     def test_respuesta_valida_se_analiza_en_una_sola_llamada(self, cliente_mock, _sleep):
         generar = cliente_mock.return_value.models.generate_content
         generar.return_value = unittest.mock.Mock(text=leer_fixture("gemini_analisis_valida.json"))
@@ -154,8 +154,8 @@ class TestAnalizar(unittest.TestCase):
     @patch("time.sleep")
     @patch("src.services.gemini.settings.GEMINI_BACKOFF_BASE", 0.5)
     @patch("src.services.gemini.settings.GEMINI_MAX_REINTENTOS", 2)
-    @patch("src.services.evaluador_ia.settings.GEMINI_API_KEY", "clave-prueba")
-    @patch("src.services.evaluador_ia.genai.Client")
+    @patch("src.services.gemini.settings.GEMINI_API_KEY", "clave-prueba")
+    @patch("src.services.gemini.genai.Client")
     def test_falla_dos_veces_y_luego_devuelve_lote_valido(self, cliente_mock, sleep_mock):
         respuesta = unittest.mock.Mock(text=leer_fixture("gemini_analisis_valida.json"))
         generar = cliente_mock.return_value.models.generate_content
@@ -170,8 +170,8 @@ class TestAnalizar(unittest.TestCase):
 
     @patch("time.sleep")
     @patch("src.services.gemini.settings.GEMINI_MAX_REINTENTOS", 2)
-    @patch("src.services.evaluador_ia.settings.GEMINI_API_KEY", "clave-prueba")
-    @patch("src.services.evaluador_ia.genai.Client")
+    @patch("src.services.gemini.settings.GEMINI_API_KEY", "clave-prueba")
+    @patch("src.services.gemini.genai.Client")
     def test_respuesta_invalida_agota_reintentos_y_lanza_error(self, cliente_mock, sleep_mock):
         respuesta_invalida = unittest.mock.Mock(
             text=leer_fixture("gemini_analisis_invalida.json")
@@ -179,7 +179,7 @@ class TestAnalizar(unittest.TestCase):
         generar = cliente_mock.return_value.models.generate_content
         generar.return_value = respuesta_invalida
 
-        with self.assertRaises(EvaluacionIALoteError) as contexto:
+        with self.assertRaises(LoteIAError) as contexto:
             EvaluadorIA().analizar(candidatos())
 
         self.assertIn("agotó los reintentos", str(contexto.exception))
@@ -190,8 +190,8 @@ class TestAnalizar(unittest.TestCase):
 
     @patch("time.sleep")
     @patch("src.services.gemini.settings.GEMINI_MAX_REINTENTOS", 1)
-    @patch("src.services.evaluador_ia.settings.GEMINI_API_KEY", "clave-prueba")
-    @patch("src.services.evaluador_ia.genai.Client")
+    @patch("src.services.gemini.settings.GEMINI_API_KEY", "clave-prueba")
+    @patch("src.services.gemini.genai.Client")
     def test_respuesta_parcial_devuelve_lo_obtenido(self, cliente_mock, _sleep):
         parcial = unittest.mock.Mock(text="""
             {"analisis": [
@@ -221,8 +221,8 @@ class TestPuntuar(unittest.TestCase):
         )
 
     @patch("time.sleep")
-    @patch("src.services.evaluador_ia.settings.GEMINI_API_KEY", "clave-prueba")
-    @patch("src.services.evaluador_ia.genai.Client")
+    @patch("src.services.gemini.settings.GEMINI_API_KEY", "clave-prueba")
+    @patch("src.services.gemini.genai.Client")
     def test_respuesta_valida_devuelve_doble_score_por_candidato(self, cliente_mock, _sleep):
         generar = cliente_mock.return_value.models.generate_content
         generar.return_value = unittest.mock.Mock(
@@ -237,8 +237,8 @@ class TestPuntuar(unittest.TestCase):
         self.assertEqual(lote.puntuaciones[0].score_calidad, 9)
 
     @patch("time.sleep")
-    @patch("src.services.evaluador_ia.settings.GEMINI_API_KEY", "clave-prueba")
-    @patch("src.services.evaluador_ia.genai.Client")
+    @patch("src.services.gemini.settings.GEMINI_API_KEY", "clave-prueba")
+    @patch("src.services.gemini.genai.Client")
     def test_el_prompt_lleva_las_especificaciones_y_el_analisis_previo(self, cliente_mock, _sleep):
         generar = cliente_mock.return_value.models.generate_content
         generar.return_value = unittest.mock.Mock(
@@ -261,8 +261,8 @@ class TestPuntuar(unittest.TestCase):
 
     @patch("time.sleep")
     @patch("src.services.gemini.settings.GEMINI_MAX_REINTENTOS", 2)
-    @patch("src.services.evaluador_ia.settings.GEMINI_API_KEY", "clave-prueba")
-    @patch("src.services.evaluador_ia.genai.Client")
+    @patch("src.services.gemini.settings.GEMINI_API_KEY", "clave-prueba")
+    @patch("src.services.gemini.genai.Client")
     def test_respuesta_invalida_agota_reintentos_y_lanza_error(self, cliente_mock, sleep_mock):
         respuesta_invalida = unittest.mock.Mock(
             text=leer_fixture("gemini_puntuacion_invalida.json")
@@ -270,7 +270,7 @@ class TestPuntuar(unittest.TestCase):
         generar = cliente_mock.return_value.models.generate_content
         generar.return_value = respuesta_invalida
 
-        with self.assertRaises(EvaluacionIALoteError) as contexto:
+        with self.assertRaises(LoteIAError) as contexto:
             EvaluadorIA().puntuar(candidatos(), {}, self._espec())
 
         self.assertEqual(contexto.exception.operacion, "puntuar")
@@ -279,8 +279,8 @@ class TestPuntuar(unittest.TestCase):
 
     @patch("time.sleep")
     @patch("src.services.gemini.settings.GEMINI_MAX_REINTENTOS", 1)
-    @patch("src.services.evaluador_ia.settings.GEMINI_API_KEY", "clave-prueba")
-    @patch("src.services.evaluador_ia.genai.Client")
+    @patch("src.services.gemini.settings.GEMINI_API_KEY", "clave-prueba")
+    @patch("src.services.gemini.genai.Client")
     def test_devuelve_la_respuesta_parcial_si_nunca_llega_completa(self, cliente_mock, _sleep):
         parcial = unittest.mock.Mock(text="""
             {"puntuaciones": [

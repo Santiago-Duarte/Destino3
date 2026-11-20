@@ -30,10 +30,10 @@ class TestAnalisisIARepository(BaseDBTestCase):
             hospedaje_id=hospedaje_id,
         )
 
-        analisis_id = self.repo.guardar(analisis)
+        analisis_id = self.repo.guardar_lote([analisis])[0]
         self.assertIsNotNone(analisis_id)
 
-        recuperado = self.repo.obtener_por_hospedaje(hospedaje_id)
+        recuperado = self.repo.obtener_por_hospedajes([hospedaje_id])[hospedaje_id]
         self.assertIsNotNone(recuperado)
         self.assertEqual(recuperado.id, analisis_id)
         self.assertEqual(recuperado.resumen_ejecutivo, "Excelente opción cerca al centro")
@@ -58,20 +58,20 @@ class TestAnalisisIARepository(BaseDBTestCase):
         destino_id = self.crear_destino(ciudad=_ciudad_unica())
         hospedaje_id = self.crear_hospedaje(destino_id)
 
-        self.repo.guardar(Analisis(
+        self.repo.guardar_lote([Analisis(
             resumen_ejecutivo="Primera versión",
             puntos_fuertes="Fuertes",
             puntos_debiles="Débiles",
             hospedaje_id=hospedaje_id,
-        ))
+        )])
 
         with self.assertRaises(errors.UniqueViolation):
-            self.repo.guardar(Analisis(
+            self.repo.guardar_lote([Analisis(
                 resumen_ejecutivo="Segunda versión",
                 puntos_fuertes="Otros fuertes",
                 puntos_debiles="Otros débiles",
                 hospedaje_id=hospedaje_id,
-            ))
+            )])
 
 
 class TestObtenerPorVariosHospedajes(BaseDBTestCase):
@@ -84,12 +84,12 @@ class TestObtenerPorVariosHospedajes(BaseDBTestCase):
         destino_id = self.crear_destino(ciudad=_ciudad_unica())
         con_analisis = self.crear_hospedaje(destino_id, nombre="Hotel A")
         sin_analisis = self.crear_hospedaje(destino_id, nombre="Hotel B")
-        self.repo.guardar(Analisis(
+        self.repo.guardar_lote([Analisis(
             resumen_ejecutivo="Análisis de A",
             puntos_fuertes="Fuertes",
             puntos_debiles="Débiles",
             hospedaje_id=con_analisis,
-        ))
+        )])
 
         recuperados = self.repo.obtener_por_hospedajes([con_analisis, sin_analisis])
 

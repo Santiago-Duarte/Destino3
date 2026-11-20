@@ -43,6 +43,37 @@ class TestHospedajeRepository(BaseDBTestCase):
         self.assertEqual(hospedajes[0].id, hospedaje_id)
         self.assertEqual(hospedajes[0].google_place_id, google_place_id)
 
+    def test_reutiliza_el_hospedaje_por_token_y_refresca_sus_datos(self):
+        destino_id = self.crear_destino(ciudad=_ciudad_unica())
+        google_place_id = f"ChIJ-refresco-{uuid.uuid4().hex}"
+        hospedaje_id = self.crear_hospedaje(
+            destino_id,
+            google_place_id=google_place_id,
+            precio_noche=100,
+            calificacion=4,
+            url_reserva="https://www.viejo.com",
+        )
+
+        id_reutilizado = self.hospedaje_repo.guardar_lote([
+            Hospedaje(
+                nombre="Hotel 1",
+                tipo="hotel",
+                precio_noche=80,
+                calificacion=4.8,
+                direccion="Calle 1",
+                url_reserva="https://www.nuevo.com",
+                destino_id=destino_id,
+                google_place_id=google_place_id,
+            )
+        ])[0]
+
+        persistidos = self.hospedaje_repo.obtener_por_destino(destino_id)
+        self.assertEqual(id_reutilizado, hospedaje_id)
+        self.assertEqual(len(persistidos), 1)
+        self.assertEqual(float(persistidos[0].precio_noche), 80.0)
+        self.assertEqual(float(persistidos[0].calificacion), 4.8)
+        self.assertEqual(persistidos[0].url_reserva, "https://www.nuevo.com")
+
     def test_persistir_dos_hospedajes_sin_google_place_id(self):
         destino_id = self.crear_destino(ciudad=_ciudad_unica())
         hospedajes = [

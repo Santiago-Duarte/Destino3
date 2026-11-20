@@ -13,7 +13,10 @@ class TestRepositoriosConTransaccionExterna(unittest.TestCase):
     def test_commit_del_repository_y_close_no_escapan_del_rollback_externo(self):
         conexion_externa = obtener_conexion()
         if conexion_externa is None:
-            raise unittest.SkipTest("No se pudo conectar a la base de datos de testing")
+            raise ConnectionError(
+                "No se pudo conectar a la base de datos de testing; "
+                "levanta PostgreSQL antes de correr la suite."
+            )
 
         ciudad = f"E3_{uuid.uuid4().hex}"
         adaptador = ConexionConSavepoint(conexion_externa)

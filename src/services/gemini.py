@@ -1,14 +1,27 @@
 import logging
 import time
 
+from google import genai
 from google.genai import types
 
 from src.config import settings
-from src.exceptions.Evaluacion_IA_error import EvaluacionIALoteError
+from src.exceptions.LoteIAError import LoteIAError
 
 logger = logging.getLogger(__name__)
 
 MODELO_IA = "gemini-3.6-flash"
+
+
+def crear_cliente():
+    """Cliente único de Gemini; sin timeout una llamada colgada bloquea el CLI."""
+    if not settings.GEMINI_API_KEY:
+        raise ValueError("Falta la credencial del proveedor de IA")
+    return genai.Client(
+        api_key=settings.GEMINI_API_KEY,
+        http_options=types.HttpOptions(
+            timeout=int(settings.GEMINI_TIMEOUT * 1000),
+        ),
+    )
 
 
 def _generar(cliente, prompt: str, schema):
@@ -62,4 +75,4 @@ def generar(
     if mejor_parcial is not None:
         return mejor_parcial
 
-    raise EvaluacionIALoteError(operacion, "El lote agotó los reintentos")
+    raise LoteIAError(operacion, "El lote agotó los reintentos")

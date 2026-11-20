@@ -16,6 +16,11 @@ class HospedajeRepository(BaseRepository):
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id;
         """
+        actualizar_hospedaje = """
+            UPDATE hospedajes
+            SET precio_noche = %s, calificacion = %s, url_reserva = %s
+            WHERE id = %s;
+        """
 
         with self._transaccion() as cursor:
             existentes = self._existentes_por_token(cursor, hospedajes)
@@ -23,7 +28,16 @@ class HospedajeRepository(BaseRepository):
             for hospedaje in hospedajes:
                 id_ya_persistido = existentes.get(hospedaje.google_place_id)
                 if id_ya_persistido is not None:
-                    # Ya se guardó en una búsqueda anterior: se reutiliza en vez de duplicar.
+                    # Ya existe: se reutiliza la fila y se refrescan los datos que cambian por búsqueda.
+                    cursor.execute(
+                        actualizar_hospedaje,
+                        (
+                            hospedaje.precio_noche,
+                            hospedaje.calificacion,
+                            hospedaje.url_reserva,
+                            id_ya_persistido,
+                        ),
+                    )
                     ids_generados.append(id_ya_persistido)
                     continue
 

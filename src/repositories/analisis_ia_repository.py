@@ -8,7 +8,7 @@ class AnalisisIARepository(BaseRepository):
         if not analisis:
             return []
 
-        # `id_temporal` no existe aquí: el análisis se liga al id real del hospedaje.
+        # El análisis se liga al id real del hospedaje, no a un índice temporal del lote.
         insertar_analisis = """
             INSERT INTO analisis_ia (
                 resumen_ejecutivo, puntos_fuertes, puntos_debiles, hospedaje_id
@@ -31,12 +31,6 @@ class AnalisisIARepository(BaseRepository):
                 )
                 ids_generados.append(cursor.fetchone()[0])
             return ids_generados
-
-    def guardar(self, analisis: Analisis) -> int:
-        return self.guardar_lote([analisis])[0]
-
-    def obtener_por_hospedaje(self, hospedaje_id: int) -> Analisis | None:
-        return self.obtener_por_hospedajes([hospedaje_id]).get(hospedaje_id)
 
     def obtener_por_hospedajes(self, hospedaje_ids: list[int]) -> dict[int, Analisis]:
         if not hospedaje_ids:

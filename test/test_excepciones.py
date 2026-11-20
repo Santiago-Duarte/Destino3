@@ -5,8 +5,8 @@ import requests
 
 from src.exceptions import (
     Destino3Error,
-    EvaluacionIALoteError,
     GeminiError,
+    LoteIAError,
     PersistenciaError,
     SerpApiError,
 )
@@ -26,7 +26,7 @@ class TestExcepcionesPersonalizadas(unittest.TestCase):
         self.assertEqual(error.detalle, "sin conexión")
         self.assertIn("SerpAPI", str(error))
         self.assertIn("consulta", str(error))
-        self.assertIsInstance(EvaluacionIALoteError("evaluar_lote", "falló"), GeminiError)
+        self.assertIsInstance(LoteIAError("analizar", "falló"), GeminiError)
         self.assertIsInstance(PersistenciaError("PostgreSQL", "guardar", "falló"), Destino3Error)
 
     @patch("src.services.buscador_serpapi.settings.SERPAPI_RATE_LIMIT_RPS", 0)

@@ -21,7 +21,10 @@ class BaseDBTestCase(unittest.TestCase):
     def setUp(self):
         self.conexion_externa = obtener_conexion()
         if self.conexion_externa is None:
-            raise unittest.SkipTest("No se pudo conectar a la base de datos de testing")
+            raise ConnectionError(
+                "No se pudo conectar a la base de datos de testing; "
+                "levanta PostgreSQL antes de correr la suite."
+            )
 
         self.conexion = ConexionConSavepoint(self.conexion_externa)
         self._parche_conexion = patch.object(

@@ -54,6 +54,22 @@ def resultado_de_prueba() -> ResultadoBusqueda:
     return ResultadoBusqueda(espec, rankear_candidatos(candidatos))
 
 
+def resultado_sin_puntajes() -> ResultadoBusqueda:
+    resultado = resultado_de_prueba()
+    for candidato in resultado.candidatos:
+        candidato.score_calidad = None
+        candidato.score_cumplimiento = None
+    return resultado
+
+
+def resultado_sin_requisitos_cumplidos() -> ResultadoBusqueda:
+    resultado = resultado_de_prueba()
+    for candidato in resultado.candidatos:
+        candidato.requisitos_cumplidos = []
+        candidato.requisitos_faltantes = ["cerca del metro"]
+    return resultado
+
+
 class TestMain(unittest.TestCase):
 
     @patch("src.orchestrator.orquestador_integracion.OrquestadorIntegracion")
@@ -105,6 +121,36 @@ class TestMain(unittest.TestCase):
 
         self.assertEqual(codigo, 0)
         self.assertIn("No se encontraron hoteles", salida.getvalue())
+
+    @patch("src.orchestrator.orquestador_integracion.OrquestadorIntegracion")
+    def test_avisa_cuando_la_ia_no_pudo_puntuar(self, orquestador):
+        orquestador.return_value.buscar_desde_frase.return_value = resultado_sin_puntajes()
+        salida = io.StringIO()
+
+        with redirect_stdout(salida):
+            codigo = main([FRASE])
+
+        texto = salida.getvalue()
+        self.assertEqual(codigo, 0)
+        self.assertIn("La IA no pudo puntuar", texto)
+        self.assertIn("1. Hotel A", texto)
+        self.assertIn("Sin puntaje", texto)
+        self.assertNotIn("Ningún hotel cumple", texto)
+
+    @patch("src.orchestrator.orquestador_integracion.OrquestadorIntegracion")
+    def test_avisa_cuando_ninguno_cumple_los_requisitos(self, orquestador):
+        orquestador.return_value.buscar_desde_frase.return_value = (
+            resultado_sin_requisitos_cumplidos()
+        )
+        salida = io.StringIO()
+
+        with redirect_stdout(salida):
+            codigo = main([FRASE])
+
+        texto = salida.getvalue()
+        self.assertEqual(codigo, 0)
+        self.assertIn("Ningún hotel cumple", texto)
+        self.assertIn("Falta: cerca del metro", texto)
 
     def test_sin_frase_el_parser_no_deja_ejecutar(self):
         with self.assertRaises(SystemExit):

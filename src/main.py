@@ -35,13 +35,16 @@ def _imprimir(resultado) -> None:
         return
 
     mejores = resultado.mejores()
-    if not mejores:
+    if mejores:
+        print(f"\nTOP {len(mejores)} de {len(resultado.candidatos)} candidatos\n")
+        lista = mejores
+    elif all(candidato.score_cumplimiento is None for candidato in resultado.candidatos):
+        print("\nLa IA no pudo puntuar esta búsqueda. Candidatos por calificación:\n")
+        lista = resultado.candidatos
+    else:
         print("\nNingún hotel cumple con lo que pediste. Te muestro los candidatos ordenados")
         print("por cumplimiento con sus requisitos pendientes:\n")
         lista = resultado.candidatos
-    else:
-        print(f"\nTOP {len(mejores)} de {len(resultado.candidatos)} candidatos\n")
-        lista = mejores
 
     for posicion, candidato in enumerate(lista, start=1):
         hospedaje = candidato.hospedaje

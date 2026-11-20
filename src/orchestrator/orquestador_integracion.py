@@ -2,7 +2,7 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from src.exceptions.Evaluacion_IA_error import EvaluacionIALoteError
+from src.exceptions.LoteIAError import LoteIAError
 from src.models.analisis import Analisis
 from src.models.busqueda import EspecificacionBusqueda
 from src.models.hospedaje import Hospedaje
@@ -111,7 +111,7 @@ class OrquestadorIntegracion:
             lote = self._obtener_evaluador().analizar(
                 [candidato.hospedaje for candidato in sin_analisis]
             )
-        except EvaluacionIALoteError as error:
+        except LoteIAError as error:
             # Sin análisis la búsqueda sigue: esos candidatos se puntúan con sus datos crudos.
             logger.warning("No se pudo analizar el lote de candidatos: %s", error)
             return
@@ -129,12 +129,18 @@ class OrquestadorIntegracion:
             candidato.analisis = guardados.get(candidato.hospedaje.id)
 
     def _puntuar(self, candidatos: list[Candidato], espec: EspecificacionBusqueda) -> None:
-        lote = self._obtener_evaluador().puntuar(
-            [candidato.hospedaje for candidato in candidatos],
-            {candidato.hospedaje.id: candidato.analisis
-             for candidato in candidatos if candidato.analisis is not None},
-            espec,
-        )
+        try:
+            lote = self._obtener_evaluador().puntuar(
+                [candidato.hospedaje for candidato in candidatos],
+                {candidato.hospedaje.id: candidato.analisis
+                 for candidato in candidatos if candidato.analisis is not None},
+                espec,
+            )
+        except LoteIAError as error:
+            # Sin puntaje la búsqueda sigue: queda el orden local por calificación.
+            logger.warning("No se pudo puntuar el lote de candidatos: %s", error)
+            return
+
         puntuaciones = {puntuacion.hospedaje_id: puntuacion
                         for puntuacion in lote.puntuaciones}
 
