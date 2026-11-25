@@ -1,18 +1,36 @@
 import argparse
 import logging
 
+from src.exceptions import Destino3Error
+
 logger = logging.getLogger(__name__)
 
 
+PREGUNTA_FRASE = (
+    '¿Qué hoteles buscas? '
+    '(ej. "hoteles en Medellin hasta 100 USD cerca del metro"): '
+)
+
+
 def crear_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    return argparse.ArgumentParser(
         description="Busca hoteles con una frase y devuelve los 3 mejores candidatos",
     )
-    parser.add_argument(
-        "frase",
-        help='Ej: "quiero hoteles en Medellin, Colombia hasta 100 USD cerca del metro"',
-    )
-    return parser
+
+
+def _pedir_frase() -> str | None:
+    """Pide la frase por consola hasta recibir una no vacía."""
+    while True:
+        try:
+            frase = input(PREGUNTA_FRASE).strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nNo se recibió ninguna frase.")
+            return None
+
+        if frase:
+            return frase
+
+        print("La frase no puede estar vacía. Inténtalo de nuevo.")
 
 
 def _nombre_destino(espec) -> str:
@@ -22,7 +40,19 @@ def _nombre_destino(espec) -> str:
 def _presupuesto(espec) -> str:
     if espec.presupuesto_max_noche is None:
         return "sin límite"
-    return f"hasta USD ${espec.presupuesto_max_noche}/noche"
+    return f"hasta USD ${espec.presupuesto_max_noche:g}/noche"
+
+
+def _precio_noche(hospedaje) -> str:
+    if hospedaje.precio_noche is None:
+        return "precio no disponible"
+    return f"USD ${float(hospedaje.precio_noche):g}/noche"
+
+
+def _calificacion(hospedaje) -> str:
+    if hospedaje.calificacion is None:
+        return "sin calificación"
+    return f"{float(hospedaje.calificacion):g}"
 
 
 def _imprimir(resultado) -> None:
@@ -48,8 +78,8 @@ def _imprimir(resultado) -> None:
 
     for posicion, candidato in enumerate(lista, start=1):
         hospedaje = candidato.hospedaje
-        print(f"{posicion}. {hospedaje.nombre} — USD ${hospedaje.precio_noche}/noche"
-              f" — calificación {hospedaje.calificacion}")
+        print(f"{posicion}. {hospedaje.nombre} — {_precio_noche(hospedaje)}"
+              f" — calificación {_calificacion(hospedaje)}")
         if candidato.score_cumplimiento is None:
             print("   Sin puntaje (la IA no respondió para este hotel)")
         else:
@@ -68,17 +98,26 @@ def _imprimir(resultado) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    argumentos = crear_parser().parse_args(argv)
+    crear_parser().parse_args(argv)
+
+    frase = _pedir_frase()
+    if frase is None:
+        return 1
 
     from src.orchestrator.orquestador_integracion import OrquestadorIntegracion
 
     try:
-        resultado = OrquestadorIntegracion().buscar_desde_frase(argumentos.frase)
-    except ValueError as error:
-        logger.error(str(error))
+        resultado = OrquestadorIntegracion().buscar_desde_frase(frase)
+    except (ValueError, Destino3Error) as error:
+        logger.error("%s", error)
         return 1
     except Exception as error:
-        logger.error("Falló la búsqueda: tipo=%s", type(error).__name__)
+        logger.error(
+            "Falló la búsqueda: %s: %s",
+            type(error).__name__,
+            error,
+        )
+        logger.debug("Detalle inesperado", exc_info=True)
         return 1
 
     _imprimir(resultado)

@@ -3,6 +3,7 @@ import unittest
 from contextlib import redirect_stdout
 from unittest.mock import patch
 
+from src.exceptions import SerpApiError
 from src.main import main
 from src.models.analisis import Analisis
 from src.models.busqueda import EspecificacionBusqueda
@@ -12,7 +13,6 @@ from src.orchestrator.orquestador_integracion import (
     ResultadoBusqueda,
     rankear_candidatos,
 )
-
 
 FRASE = "quiero hoteles en Medellin hasta 100 USD cerca del metro"
 
@@ -65,6 +65,8 @@ def resultado_sin_puntajes() -> ResultadoBusqueda:
 def resultado_sin_requisitos_cumplidos() -> ResultadoBusqueda:
     resultado = resultado_de_prueba()
     for candidato in resultado.candidatos:
+        candidato.score_calidad = 5
+        candidato.score_cumplimiento = 5
         candidato.requisitos_cumplidos = []
         candidato.requisitos_faltantes = ["cerca del metro"]
     return resultado
@@ -72,13 +74,18 @@ def resultado_sin_requisitos_cumplidos() -> ResultadoBusqueda:
 
 class TestMain(unittest.TestCase):
 
+    def setUp(self):
+        self.patch_input = patch("builtins.input", return_value=FRASE)
+        self.input_mock = self.patch_input.start()
+        self.addCleanup(self.patch_input.stop)
+
     @patch("src.orchestrator.orquestador_integracion.OrquestadorIntegracion")
     def test_imprime_el_top_y_devuelve_cero(self, orquestador):
         orquestador.return_value.buscar_desde_frase.return_value = resultado_de_prueba()
         salida = io.StringIO()
 
         with redirect_stdout(salida):
-            codigo = main([FRASE])
+            codigo = main([])
 
         self.assertEqual(codigo, 0)
         texto = salida.getvalue()
@@ -97,7 +104,18 @@ class TestMain(unittest.TestCase):
         )
 
         with redirect_stdout(io.StringIO()):
-            codigo = main(["quiero hoteles baratos y buenos"])
+            codigo = main([])
+
+        self.assertEqual(codigo, 1)
+
+    @patch("src.orchestrator.orquestador_integracion.OrquestadorIntegracion")
+    def test_fallo_del_proveedor_devuelve_uno(self, orquestador):
+        orquestador.return_value.buscar_desde_frase.side_effect = SerpApiError(
+            "consulta", "sin conexión"
+        )
+
+        with redirect_stdout(io.StringIO()):
+            codigo = main([])
 
         self.assertEqual(codigo, 1)
 
@@ -106,7 +124,7 @@ class TestMain(unittest.TestCase):
         orquestador.return_value.buscar_desde_frase.side_effect = RuntimeError("caos")
 
         with redirect_stdout(io.StringIO()):
-            codigo = main([FRASE])
+            codigo = main([])
 
         self.assertEqual(codigo, 1)
 
@@ -117,7 +135,7 @@ class TestMain(unittest.TestCase):
         salida = io.StringIO()
 
         with redirect_stdout(salida):
-            codigo = main([FRASE])
+            codigo = main([])
 
         self.assertEqual(codigo, 0)
         self.assertIn("No se encontraron hoteles", salida.getvalue())
@@ -128,7 +146,7 @@ class TestMain(unittest.TestCase):
         salida = io.StringIO()
 
         with redirect_stdout(salida):
-            codigo = main([FRASE])
+            codigo = main([])
 
         texto = salida.getvalue()
         self.assertEqual(codigo, 0)
@@ -145,17 +163,57 @@ class TestMain(unittest.TestCase):
         salida = io.StringIO()
 
         with redirect_stdout(salida):
-            codigo = main([FRASE])
+            codigo = main([])
 
         texto = salida.getvalue()
         self.assertEqual(codigo, 0)
         self.assertIn("Ningún hotel cumple", texto)
         self.assertIn("Falta: cerca del metro", texto)
 
-    def test_sin_frase_el_parser_no_deja_ejecutar(self):
-        with self.assertRaises(SystemExit):
+    def test_pide_la_frase_por_consola_y_la_envia_al_orquestador(self):
+        with patch(
+            "src.orchestrator.orquestador_integracion.OrquestadorIntegracion"
+        ) as orquestador:
+            orquestador.return_value.buscar_desde_frase.return_value = (
+                resultado_de_prueba()
+            )
+
             with redirect_stdout(io.StringIO()):
-                main([])
+                codigo = main([])
+
+        self.assertEqual(codigo, 0)
+        self.input_mock.assert_called_once()
+        orquestador.return_value.buscar_desde_frase.assert_called_once_with(FRASE)
+
+    @patch("src.orchestrator.orquestador_integracion.OrquestadorIntegracion")
+    def test_vuelve_a_preguntar_si_la_frase_esta_vacia(self, orquestador):
+        self.input_mock.side_effect = ["", "   ", FRASE]
+        orquestador.return_value.buscar_desde_frase.return_value = resultado_de_prueba()
+
+        with redirect_stdout(io.StringIO()):
+            codigo = main([])
+
+        self.assertEqual(codigo, 0)
+        self.assertEqual(self.input_mock.call_count, 3)
+        orquestador.return_value.buscar_desde_frase.assert_called_once_with(FRASE)
+
+    def test_entrada_interrumpida_devuelve_uno(self):
+        self.input_mock.side_effect = KeyboardInterrupt
+
+        salida = io.StringIO()
+        with redirect_stdout(salida):
+            codigo = main([])
+
+        self.assertEqual(codigo, 1)
+        self.assertIn("No se recibió ninguna frase", salida.getvalue())
+
+    def test_fin_de_entrada_sin_frase_devuelve_uno(self):
+        self.input_mock.side_effect = EOFError
+
+        with redirect_stdout(io.StringIO()):
+            codigo = main([])
+
+        self.assertEqual(codigo, 1)
 
 
 if __name__ == "__main__":

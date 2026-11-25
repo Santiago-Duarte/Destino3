@@ -29,9 +29,13 @@ class TestExcepcionesPersonalizadas(unittest.TestCase):
         self.assertIsInstance(LoteIAError("analizar", "falló"), GeminiError)
         self.assertIsInstance(PersistenciaError("PostgreSQL", "guardar", "falló"), Destino3Error)
 
+    @patch("src.services.buscador_serpapi.time.sleep")
+    @patch("src.services.buscador_serpapi.settings.SERPAPI_MAX_REINTENTOS", 0)
     @patch("src.services.buscador_serpapi.settings.SERPAPI_RATE_LIMIT_RPS", 0)
     @patch("src.services.buscador_serpapi.requests.get")
-    def test_serpapi_conserva_causa_y_contexto_en_error_de_red(self, get_mock):
+    def test_serpapi_conserva_causa_y_contexto_en_error_de_red(
+            self, get_mock, _sleep
+    ):
         causa = requests.exceptions.ConnectionError("sin red")
         get_mock.side_effect = causa
 
