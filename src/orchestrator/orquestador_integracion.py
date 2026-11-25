@@ -2,6 +2,7 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from src.config import settings
 from src.exceptions.LoteIAError import LoteIAError
 from src.models.analisis import Analisis
 from src.models.busqueda import EspecificacionBusqueda
@@ -30,12 +31,36 @@ class ResultadoBusqueda:
     especificacion: EspecificacionBusqueda
     candidatos: list[Candidato]  # ya rankeados
 
-    def mejores(self, cantidad: int = 3) -> list[Candidato]:
-        puntuados = [candidato for candidato in self.candidatos
-                     if candidato.score_cumplimiento is not None]
+    def mejores(self, cantidad: int | None = None) -> list[Candidato]:
+        """Devuelve el top de candidatos puntuados.
+
+        Con requisitos, un candidato entra si la IA reportó al menos un
+        requisito cumplido o si su score es suficientemente alto. El score
+        cubre el caso de una respuesta parcial sin listas de requisitos.
+        """
+        cantidad = settings.TOP_RESULTADOS if cantidad is None else cantidad
+        puntuados = [
+            candidato for candidato in self.candidatos
+            if candidato.score_cumplimiento is not None
+        ]
         if self.especificacion.tiene_requisitos():
-            puntuados = [candidato for candidato in puntuados if candidato.requisitos_cumplidos]
+            filtrados = []
+            for candidato in puntuados:
+                score = candidato.score_cumplimiento
+                if candidato.requisitos_cumplidos or (
+                        score is not None
+                        and score >= settings.SCORE_CUMPLIMIENTO_MINIMO
+                ):
+                    filtrados.append(candidato)
+            puntuados = filtrados
         return puntuados[:cantidad]
+
+
+def _id_de(candidato: Candidato) -> int:
+    """Los candidatos ya persistidos deben tener id para analizarse."""
+    if candidato.hospedaje.id is None:
+        raise ValueError("El hospedaje del candidato no está persistido")
+    return candidato.hospedaje.id
 
 
 def rankear_candidatos(candidatos: list[Candidato]) -> list[Candidato]:
@@ -79,14 +104,17 @@ class OrquestadorIntegracion:
 
         repositorio_hospedajes = self._hospedajes_repo or HospedajeRepository()
         for hospedaje, id_generado in zip(
-                hospedajes, repositorio_hospedajes.guardar_lote(hospedajes)
+                hospedajes,
+                repositorio_hospedajes.guardar_lote(hospedajes),
+                strict=True,
         ):
             hospedaje.id = id_generado
 
-        presupuesto = espec.presupuesto_max_noche or float("inf")
         candidatos = [
             Candidato(hospedaje=hospedaje)
-            for hospedaje in preseleccionar_candidatos(hospedajes, presupuesto)
+            for hospedaje in preseleccionar_candidatos(
+                hospedajes, espec.presupuesto_max_noche
+            )
         ]
         if not candidatos:
             return ResultadoBusqueda(espec, [])
@@ -98,12 +126,15 @@ class OrquestadorIntegracion:
     def _completar_analisis(self, candidatos: list[Candidato]) -> None:
         repositorio = self._analisis_repo or AnalisisIARepository()
         guardados = repositorio.obtener_por_hospedajes(
-            [candidato.hospedaje.id for candidato in candidatos]
+            [_id_de(candidato) for candidato in candidatos]
         )
         for candidato in candidatos:
-            candidato.analisis = guardados.get(candidato.hospedaje.id)
+            candidato.analisis = guardados.get(_id_de(candidato))
 
-        sin_analisis = [candidato for candidato in candidatos if candidato.analisis is None]
+        sin_analisis = [
+            candidato for candidato in candidatos
+            if candidato.analisis is None
+        ]
         if not sin_analisis:
             return
 
@@ -116,23 +147,30 @@ class OrquestadorIntegracion:
             logger.warning("No se pudo analizar el lote de candidatos: %s", error)
             return
 
-        esperados = {candidato.hospedaje.id for candidato in sin_analisis}
-        nuevos = [
-            Analisis.desde_ia(item)
-            for item in lote.analisis
-            if item.hospedaje_id in esperados and item.hospedaje_id not in guardados
-        ]
-        repositorio.guardar_lote(nuevos)
+        esperados = {_id_de(candidato) for candidato in sin_analisis}
+        por_hospedaje: dict[int, Analisis] = {}
+        for item in lote.analisis:
+            if item.hospedaje_id in esperados:
+                # Si el modelo repite un id, gana la última respuesta válida.
+                por_hospedaje[item.hospedaje_id] = Analisis.desde_ia(item)
 
-        guardados.update({item.hospedaje_id: item for item in nuevos})
+        nuevos = list(por_hospedaje.values())
+        if not nuevos:
+            return
+
+        ids_generados = repositorio.guardar_lote(nuevos)
+        for analisis, id_generado in zip(nuevos, ids_generados, strict=True):
+            analisis.id = id_generado
+
+        guardados.update(por_hospedaje)
         for candidato in sin_analisis:
-            candidato.analisis = guardados.get(candidato.hospedaje.id)
+            candidato.analisis = guardados.get(_id_de(candidato))
 
     def _puntuar(self, candidatos: list[Candidato], espec: EspecificacionBusqueda) -> None:
         try:
             lote = self._obtener_evaluador().puntuar(
                 [candidato.hospedaje for candidato in candidatos],
-                {candidato.hospedaje.id: candidato.analisis
+                {_id_de(candidato): candidato.analisis
                  for candidato in candidatos if candidato.analisis is not None},
                 espec,
             )
@@ -145,7 +183,7 @@ class OrquestadorIntegracion:
                         for puntuacion in lote.puntuaciones}
 
         for candidato in candidatos:
-            puntuacion = puntuaciones.get(candidato.hospedaje.id)
+            puntuacion = puntuaciones.get(_id_de(candidato))
             if puntuacion is None:
                 logger.warning(
                     "Sin puntaje para %s; queda al final del ranking",

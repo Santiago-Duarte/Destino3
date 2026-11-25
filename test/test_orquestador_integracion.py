@@ -13,7 +13,6 @@ from src.models.busqueda import EspecificacionBusqueda
 from src.models.hospedaje import Hospedaje
 from src.orchestrator.orquestador_integracion import OrquestadorIntegracion
 
-
 FRASE = "quiero hoteles en Medellin hasta 100 USD cerca del metro"
 
 
@@ -69,6 +68,7 @@ class TestBuscarDesdeFrase(unittest.TestCase):
         self.hospedajes_repo.guardar_lote.return_value = [101, 102]
         self.analisis_repo = Mock()
         self.analisis_repo.obtener_por_hospedajes.return_value = {}
+        self.analisis_repo.guardar_lote.return_value = [201, 202]
         self.evaluador = Mock()
         self.evaluador.analizar.return_value = LoteAnalisisIA(analisis=[
             analisis_de(101, "Análisis A"),

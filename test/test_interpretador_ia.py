@@ -5,7 +5,6 @@ from unittest.mock import Mock, patch
 from src.models.busqueda import EspecificacionBusqueda
 from src.services.interpretador_ia import InterpretadorIA
 
-
 FRASE = "quiero hoteles en Medellin, Colombia hasta 100 USD cerca del metro"
 
 

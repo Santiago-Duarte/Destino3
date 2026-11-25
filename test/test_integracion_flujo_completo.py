@@ -14,7 +14,6 @@ from src.orchestrator.orquestador_integracion import OrquestadorIntegracion
 from src.repositories.analisis_ia_repository import AnalisisIARepository
 from test.db_test_case import BaseDBTestCase
 
-
 FRASE = "quiero hoteles en Medellin hasta 100 USD cerca del metro"
 
 
