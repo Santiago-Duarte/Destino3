@@ -85,10 +85,33 @@ python -m src.main
 ```
 
 ```text
-¿Qué hoteles buscas? (ej. "hoteles en Medellin hasta 100 USD cerca del metro"): hoteles en Cartagena cerca de la playa
+¿Qué hoteles buscas? (ej. "hoteles en Medellin hasta 100 USD cerca del metro"): hoteles en Cartagena del 12 al 15 de diciembre para 2 adultos
 ```
 
-Si pulsas Enter sin escribir nada, vuelve a preguntar. Con `--help` puedes ver
+El programa extrae de la frase la ciudad, las fechas, la ocupación y el presupuesto.
+Si falta algo, lo pregunta por consola:
+
+```text
+Necesito las fechas de entrada y salida.
+Entrada [dd/mm] (vie 27/11): 
+Salida [dd/mm] (dom 29/11): 
+Adultos [2]: 
+Niños [0]: 
+¿Viajan con mascotas? (s/n) [n]: 
+
+Destino: Cartagena, Colombia
+Fechas: vie 27/11 → dom 29/11 (2 noches)
+Ocupación: 2 adultos, 0 niños, sin mascotas
+Presupuesto: sin límite
+¿Buscar con estos datos? [S/n]: 
+```
+
+- Enter acepta el valor mostrado.
+- Las fechas se escriben como `dd/mm` o `dd/mm/aaaa`; el año se infiere si falta.
+- No se aceptan fechas pasadas, salidas anteriores a la entrada, estancias de más de 30 noches ni entradas a más de un año.
+- Solo se pide confirmación cuando hubo que completar datos.
+
+Si pulsas Enter sin escribir la frase, vuelve a preguntar. Con `--help` puedes ver
 la ayuda del comando:
 
 ```bash
@@ -98,7 +121,8 @@ python -m src.main --help
 Salida esperada:
 
 ```text
-Búsqueda: Medellin, Colombia | presupuesto: hasta USD $100/noche
+Búsqueda: Medellin, Colombia | 04/12 → 06/12 (2 noches) | 2 adultos, 0 niños
+Presupuesto: hasta USD $100/noche
 Preferencias: cerca del metro
 
 TOP 3 de 7 candidatos
