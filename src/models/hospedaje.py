@@ -5,14 +5,15 @@ class Hospedaje:
     def __init__(
             self,
             nombre: str,
-            tipo: str,
+            tipo: str | None,
             precio_noche: float | Decimal | None,
             calificacion: float | Decimal | None,
             direccion: str | None,
             url_reserva: str | None,
-            destino_id: int,
+            destino_id: int | None,
             id: int | None = None,
             google_place_id: str | None = None,
+            descripcion: str | None = None,
     ) -> None:
         self.nombre = nombre
         self.tipo = tipo
@@ -23,3 +24,4 @@ class Hospedaje:
         self.destino_id = destino_id
         self.id = id
         self.google_place_id = google_place_id
+        self.descripcion = descripcion

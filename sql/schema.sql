@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS hospedajes (
 	tipo VARCHAR(20) CHECK (tipo IN ('hotel', 'airbnb', 'otro')),
 	precio_noche DECIMAL(10, 2),
 	calificacion DECIMAL(3, 2),
-	direccion VARCHAR(200),
+	descripcion TEXT,
+	direccion TEXT,
 	url_reserva TEXT,
 	destino_id INT NOT NULL REFERENCES destinos(id) ON DELETE CASCADE,
 	google_place_id TEXT
@@ -30,5 +31,7 @@ CREATE TABLE IF NOT EXISTS analisis_ia (
 	resumen_ejecutivo TEXT,
 	puntos_fuertes TEXT,
 	puntos_debiles TEXT,
-	hospedaje_id INT UNIQUE REFERENCES hospedajes(id) ON DELETE CASCADE
+	hospedaje_id INT UNIQUE REFERENCES hospedajes(id) ON DELETE CASCADE,
+	version INT NOT NULL DEFAULT 1,
+	actualizado_en TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
