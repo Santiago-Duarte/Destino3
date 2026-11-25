@@ -1,3 +1,4 @@
+from src.config import settings
 from src.models.analisis import Analisis
 from src.repositories.base_repository import BaseRepository
 
@@ -5,15 +6,28 @@ from src.repositories.base_repository import BaseRepository
 class AnalisisIARepository(BaseRepository):
 
     def guardar_lote(self, analisis: list[Analisis]) -> list[int]:
+        """Persiste el análisis y devuelve un id por cada elemento.
+
+        ``UNIQUE (hospedaje_id)`` convierte el insert en upsert: si el hotel
+        ya tenía análisis se refresca, y un duplicado dentro del lote no
+        rompe la transacción. La versión permite invalidar análisis viejos
+        cuando cambia el prompt que los generó.
+        """
         if not analisis:
             return []
 
-        # El análisis se liga al id real del hospedaje, no a un índice temporal del lote.
-        insertar_analisis = """
+        guardar_analisis = """
             INSERT INTO analisis_ia (
-                resumen_ejecutivo, puntos_fuertes, puntos_debiles, hospedaje_id
+                resumen_ejecutivo, puntos_fuertes, puntos_debiles,
+                hospedaje_id, version, actualizado_en
             )
-            VALUES (%s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (hospedaje_id) DO UPDATE SET
+                resumen_ejecutivo = EXCLUDED.resumen_ejecutivo,
+                puntos_fuertes = EXCLUDED.puntos_fuertes,
+                puntos_debiles = EXCLUDED.puntos_debiles,
+                version = EXCLUDED.version,
+                actualizado_en = CURRENT_TIMESTAMP
             RETURNING id;
         """
 
@@ -21,12 +35,13 @@ class AnalisisIARepository(BaseRepository):
             ids_generados = []
             for item in analisis:
                 cursor.execute(
-                    insertar_analisis,
+                    guardar_analisis,
                     (
                         item.resumen_ejecutivo,
                         item.puntos_fuertes,
                         item.puntos_debiles,
                         item.hospedaje_id,
+                        settings.ANALISIS_VERSION,
                     ),
                 )
                 ids_generados.append(cursor.fetchone()[0])
@@ -41,9 +56,9 @@ class AnalisisIARepository(BaseRepository):
                 """
                 SELECT id, resumen_ejecutivo, puntos_fuertes, puntos_debiles, hospedaje_id
                 FROM analisis_ia
-                WHERE hospedaje_id = ANY(%s);
+                WHERE hospedaje_id = ANY(%s) AND version = %s;
                 """,
-                (hospedaje_ids,),
+                (hospedaje_ids, settings.ANALISIS_VERSION),
             )
             return {
                 fila[4]: Analisis(

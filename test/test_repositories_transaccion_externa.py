@@ -2,21 +2,16 @@ import unittest
 import uuid
 from unittest.mock import patch
 
-from src.config.database import obtener_conexion
 from src.models.destino import Destino
 from src.repositories import base_repository
 from src.repositories.destino_repository import DestinoRepository
+from test.db_test_case import conexion_de_pruebas
 from test.transaction_adapter import ConexionConSavepoint
 
 
 class TestRepositoriosConTransaccionExterna(unittest.TestCase):
     def test_commit_del_repository_y_close_no_escapan_del_rollback_externo(self):
-        conexion_externa = obtener_conexion()
-        if conexion_externa is None:
-            raise ConnectionError(
-                "No se pudo conectar a la base de datos de testing; "
-                "levanta PostgreSQL antes de correr la suite."
-            )
+        conexion_externa = conexion_de_pruebas()
 
         ciudad = f"E3_{uuid.uuid4().hex}"
         adaptador = ConexionConSavepoint(conexion_externa)

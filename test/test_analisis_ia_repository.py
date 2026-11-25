@@ -1,8 +1,8 @@
 import unittest
 import uuid
+from unittest.mock import patch
 
 import psycopg2
-from psycopg2 import errors
 
 from src.models.analisis import Analisis
 from src.repositories.analisis_ia_repository import AnalisisIARepository
@@ -52,26 +52,58 @@ class TestAnalisisIARepository(BaseDBTestCase):
         self.assertIn("resumen_ejecutivo", columnas)
         self.assertIn("puntos_fuertes", columnas)
         self.assertIn("puntos_debiles", columnas)
+        self.assertIn("version", columnas)
+        self.assertIn("actualizado_en", columnas)
         self.assertNotIn("score_calidad_precio", columnas)
 
-    def test_duplicar_analisis_del_mismo_hospedaje_falla(self):
+    def test_duplicar_analisis_del_mismo_hospedaje_actualiza_la_fila(self):
         destino_id = self.crear_destino(ciudad=_ciudad_unica())
         hospedaje_id = self.crear_hospedaje(destino_id)
 
-        self.repo.guardar_lote([Analisis(
+        primer_id = self.repo.guardar_lote([Analisis(
             resumen_ejecutivo="Primera versión",
             puntos_fuertes="Fuertes",
             puntos_debiles="Débiles",
             hospedaje_id=hospedaje_id,
-        )])
+        )])[0]
+        segundo_id = self.repo.guardar_lote([Analisis(
+            resumen_ejecutivo="Segunda versión",
+            puntos_fuertes="Otros fuertes",
+            puntos_debiles="Otros débiles",
+            hospedaje_id=hospedaje_id,
+        )])[0]
 
-        with self.assertRaises(errors.UniqueViolation):
+        self.assertEqual(primer_id, segundo_id)
+        recuperado = self.repo.obtener_por_hospedajes([hospedaje_id])[hospedaje_id]
+        self.assertEqual(recuperado.resumen_ejecutivo, "Segunda versión")
+        self.assertEqual(recuperado.puntos_fuertes, "Otros fuertes")
+
+    @patch("src.repositories.analisis_ia_repository.settings.ANALISIS_VERSION", 2)
+    def test_un_analisis_de_otra_version_se_ignora_y_se_regenera(self):
+        destino_id = self.crear_destino(ciudad=_ciudad_unica())
+        hospedaje_id = self.crear_hospedaje(destino_id)
+        with patch(
+                "src.repositories.analisis_ia_repository.settings.ANALISIS_VERSION",
+                1,
+        ):
             self.repo.guardar_lote([Analisis(
-                resumen_ejecutivo="Segunda versión",
-                puntos_fuertes="Otros fuertes",
-                puntos_debiles="Otros débiles",
+                resumen_ejecutivo="Análisis de la versión anterior",
+                puntos_fuertes="Fuertes",
+                puntos_debiles="Débiles",
                 hospedaje_id=hospedaje_id,
             )])
+
+        self.assertEqual(self.repo.obtener_por_hospedajes([hospedaje_id]), {})
+
+        self.repo.guardar_lote([Analisis(
+            resumen_ejecutivo="Análisis regenerado",
+            puntos_fuertes="Nuevos fuertes",
+            puntos_debiles="Nuevos débiles",
+            hospedaje_id=hospedaje_id,
+        )])
+
+        recuperado = self.repo.obtener_por_hospedajes([hospedaje_id])[hospedaje_id]
+        self.assertEqual(recuperado.resumen_ejecutivo, "Análisis regenerado")
 
 
 class TestObtenerPorVariosHospedajes(BaseDBTestCase):
@@ -146,10 +178,16 @@ class TestGuardarLoteAnalisis(BaseDBTestCase):
     def test_con_error_en_el_ultimo_la_tabla_queda_sin_filas_parciales(self):
         destino_id = self.crear_destino(ciudad=_ciudad_unica())
         hospedaje_1 = self.crear_hospedaje(destino_id, nombre="Hotel A")
-        lote = self._crear_lote([hospedaje_1, hospedaje_1])
+        lote = self._crear_lote([hospedaje_1])
+        lote.append(Analisis(
+            resumen_ejecutivo="Huérfano",
+            puntos_fuertes="Ninguno",
+            puntos_debiles="FK inexistente",
+            hospedaje_id=999999,
+        ))
         analisis_antes = self._contar_analisis()
 
-        with self.assertRaises(errors.UniqueViolation):
+        with self.assertRaises(psycopg2.IntegrityError):
             self.repo.guardar_lote(lote)
 
         self.assertEqual(self._contar_analisis(), analisis_antes)

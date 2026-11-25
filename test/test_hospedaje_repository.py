@@ -26,6 +26,7 @@ class TestHospedajeRepository(BaseDBTestCase):
         self.assertEqual(hospedaje.tipo, "hotel")
         self.assertEqual(float(hospedaje.precio_noche), 100.0)
         self.assertEqual(float(hospedaje.calificacion), 4.0)
+        self.assertEqual(hospedaje.descripcion, "Descripción de prueba")
         self.assertEqual(hospedaje.direccion, "Calle 1")
         self.assertEqual(hospedaje.url_reserva, "https://www.hotel1.com")
         self.assertEqual(hospedaje.destino_id, destino_id)
@@ -56,11 +57,12 @@ class TestHospedajeRepository(BaseDBTestCase):
 
         id_reutilizado = self.hospedaje_repo.guardar_lote([
             Hospedaje(
-                nombre="Hotel 1",
+                nombre="Hotel Renombrado",
                 tipo="hotel",
                 precio_noche=80,
                 calificacion=4.8,
-                direccion="Calle 1",
+                descripcion="Nueva descripción",
+                direccion="Calle nueva",
                 url_reserva="https://www.nuevo.com",
                 destino_id=destino_id,
                 google_place_id=google_place_id,
@@ -70,9 +72,25 @@ class TestHospedajeRepository(BaseDBTestCase):
         persistidos = self.hospedaje_repo.obtener_por_destino(destino_id)
         self.assertEqual(id_reutilizado, hospedaje_id)
         self.assertEqual(len(persistidos), 1)
+        self.assertEqual(persistidos[0].nombre, "Hotel Renombrado")
+        self.assertEqual(persistidos[0].descripcion, "Nueva descripción")
+        self.assertEqual(persistidos[0].direccion, "Calle nueva")
         self.assertEqual(float(persistidos[0].precio_noche), 80.0)
         self.assertEqual(float(persistidos[0].calificacion), 4.8)
         self.assertEqual(persistidos[0].url_reserva, "https://www.nuevo.com")
+
+    def test_descripcion_larga_se_persiste_sin_truncarse(self):
+        destino_id = self.crear_destino(ciudad=_ciudad_unica())
+        descripcion = "d" * 250
+
+        self.crear_hospedaje(
+            destino_id,
+            descripcion=descripcion,
+            google_place_id=f"ChIJ-larga-{uuid.uuid4().hex}",
+        )
+
+        persistidos = self.hospedaje_repo.obtener_por_destino(destino_id)
+        self.assertEqual(persistidos[0].descripcion, descripcion)
 
     def test_persistir_dos_hospedajes_sin_google_place_id(self):
         destino_id = self.crear_destino(ciudad=_ciudad_unica())
@@ -97,14 +115,14 @@ class TestHospedajeRepository(BaseDBTestCase):
         self.assertEqual({hospedaje.id for hospedaje in persistidos}, set(ids))
         self.assertTrue(all(hospedaje.google_place_id is None for hospedaje in persistidos))
 
-    def test_google_place_id_duplicado_falla_y_no_deja_filas_parciales(self):
+    def test_google_place_id_duplicado_en_el_lote_reutiliza_la_fila(self):
         destino_id = self.crear_destino(ciudad=_ciudad_unica())
         google_place_id = f"ChIJ-duplicado-{uuid.uuid4().hex}"
         hospedajes = [
             Hospedaje(
                 nombre=f"Hospedaje duplicado {indice}",
                 tipo="hotel",
-                precio_noche=100,
+                precio_noche=100 + indice,
                 calificacion=4,
                 direccion="Calle de prueba",
                 url_reserva=None,
@@ -114,17 +132,20 @@ class TestHospedajeRepository(BaseDBTestCase):
             for indice in range(2)
         ]
 
-        with self.assertRaises(psycopg2.IntegrityError):
-            self.hospedaje_repo.guardar_lote(hospedajes)
+        ids = self.hospedaje_repo.guardar_lote(hospedajes)
 
+        self.assertEqual(ids[0], ids[1])
         with self.conexion.cursor() as cursor:
             cursor.execute(
-                "SELECT COUNT(*) FROM hospedajes WHERE google_place_id = %s",
+                "SELECT COUNT(*), MAX(nombre), MAX(precio_noche) "
+                "FROM hospedajes WHERE google_place_id = %s",
                 (google_place_id,),
             )
-            cantidad_persistida = cursor.fetchone()[0]
+            cantidad, nombre, precio = cursor.fetchone()
 
-        self.assertEqual(cantidad_persistida, 0)
+        self.assertEqual(cantidad, 1)
+        self.assertEqual(nombre, "Hospedaje duplicado 1")
+        self.assertEqual(float(precio), 101.0)
 
     def test_obtener_hospedajes_sin_registros(self):
         destino_id = self.crear_destino(ciudad=_ciudad_unica())
