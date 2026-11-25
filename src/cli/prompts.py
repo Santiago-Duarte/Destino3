@@ -52,6 +52,8 @@ def formatear_ocupacion(espec: EspecificacionBusqueda) -> str:
         f"{adultos} {'adulto' if adultos == 1 else 'adultos'}, "
         f"{ninos} {'niño' if ninos == 1 else 'niños'}"
     )
+    if espec.mascotas is None:
+        return texto + ", mascotas no especificadas"
     return texto + (", con mascotas" if espec.mascotas else ", sin mascotas")
 
 

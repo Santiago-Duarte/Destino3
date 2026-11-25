@@ -195,7 +195,15 @@ def _recolectar_propiedades(
         parametros_base: dict[str, str | int],
         max_paginas: int,
         max_resultados: int,
-) -> tuple[dict | None, list[dict]]:
+) -> tuple[dict, list[dict]]:
+    """Lee páginas hasta el tope de páginas o de resultados.
+
+    La configuración debe pedir al menos una página y un resultado: el bucle
+    corre una sola vez como mínimo, así que siempre hay una respuesta inicial.
+    """
+    if max_paginas < 1 or max_resultados < 1:
+        raise ValueError("SerpAPI debe pedir al menos una página y un resultado.")
+
     propiedades: list[dict] = []
     respuesta_inicial: dict | None = None
     token_siguiente_pagina: str | None = None
@@ -233,23 +241,11 @@ def _recolectar_propiedades(
         if not token_siguiente_pagina:
             break
 
-    return respuesta_inicial, propiedades
+    return respuesta_inicial or {}, propiedades
 
 
-def _unir_paginas(
-        respuesta_inicial: dict | None,
-        propiedades: list[dict],
-        parametros_base: dict[str, str | int],
-) -> dict:
-    if respuesta_inicial is None:
-        # No se expone la API key en la respuesta consolidada.
-        parametros_publicos = {
-            clave: valor
-            for clave, valor in parametros_base.items()
-            if clave != "api_key"
-        }
-        return {"search_parameters": parametros_publicos, "properties": []}
-
+def _unir_paginas(respuesta_inicial: dict, propiedades: list[dict]) -> dict:
+    """Consolida la primera respuesta con las propiedades de todas las páginas."""
     respuesta_unida = {
         clave: valor
         for clave, valor in respuesta_inicial.items()
@@ -270,7 +266,7 @@ def consultar_serpapi(espec: EspecificacionBusqueda) -> dict:
         settings.SERPAPI_MAX_PAGES,
         settings.SERPAPI_MAX_RESULTS,
     )
-    return _unir_paginas(respuesta_inicial, propiedades, parametros_base)
+    return _unir_paginas(respuesta_inicial, propiedades)
 
 
 def buscar_hospedajes(espec: EspecificacionBusqueda) -> list[Hospedaje]:
