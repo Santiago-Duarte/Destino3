@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      ENVIRONMENT: testing
+      DB_HOST: localhost
+      DB_PORT: "5432"
+      DB_TEST_NAME: destino3_test_db
+      DB_TEST_USER: postgres
+      DB_TEST_PASSWORD: postgres
+      DB_DEMO_NAME: demo_db
+      DB_DEMO_USER: destino3_demo
+      DB_DEMO_PASSWORD: demo
+      DB_PRODUCTION_NAME: destino3_db
+      DB_PRODUCTION_USER: destino3_production
+      DB_PRODUCTION_PASSWORD: production
+      REQUIRE_DB_TESTS: "1"
+      SERPAPI_KEY: test
+      GEMINI_API_KEY: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Instalar dependencias
+        run: pip install -r requirements-dev.txt
+
+      - name: Crear base de pruebas
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d postgres \
+            -c "CREATE DATABASE destino3_test_db;"
+          PGPASSWORD=postgres psql -h localhost -U postgres -d destino3_test_db \
+            -f sql/schema.sql
+
+      - name: Pruebas
+        run: pytest
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Tipos
+        run: mypy src

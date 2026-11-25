@@ -1,3 +1,4 @@
+import os
 import unittest
 from unittest.mock import patch
 
@@ -10,6 +11,21 @@ from src.repositories.hospedaje_repository import HospedajeRepository
 from test.transaction_adapter import ConexionConSavepoint
 
 
+def conexion_de_pruebas():
+    """Obtiene conexión o salta la prueba si PostgreSQL no está disponible."""
+    conexion = obtener_conexion()
+    if conexion is None:
+        if os.getenv("REQUIRE_DB_TESTS") == "1":
+            raise ConnectionError(
+                "No se pudo conectar a la base de datos de testing; "
+                "levanta PostgreSQL antes de correr la suite."
+            )
+        raise unittest.SkipTest(
+            "PostgreSQL no disponible; se omite la prueba de integración."
+        )
+    return conexion
+
+
 class BaseDBTestCase(unittest.TestCase):
     """Abre una conexión por prueba y revierte todo al terminar."""
 
@@ -19,12 +35,7 @@ class BaseDBTestCase(unittest.TestCase):
         cls.hospedaje_repo = HospedajeRepository()
 
     def setUp(self):
-        self.conexion_externa = obtener_conexion()
-        if self.conexion_externa is None:
-            raise ConnectionError(
-                "No se pudo conectar a la base de datos de testing; "
-                "levanta PostgreSQL antes de correr la suite."
-            )
+        self.conexion_externa = conexion_de_pruebas()
 
         self.conexion = ConexionConSavepoint(self.conexion_externa)
         self._parche_conexion = patch.object(
@@ -50,6 +61,7 @@ class BaseDBTestCase(unittest.TestCase):
             tipo="hotel",
             precio_noche=100,
             calificacion=4,
+            descripcion="Descripción de prueba",
             direccion="Calle 1",
             url_reserva="https://www.hotel1.com",
             destino_id=destino_id,

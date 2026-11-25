@@ -1,6 +1,7 @@
 from typing import Any
 
-from psycopg2.extensions import connection as ConexionPostgres, cursor as CursorPostgres
+from psycopg2.extensions import connection as ConexionPostgres
+from psycopg2.extensions import cursor as CursorPostgres
 
 
 class ConexionConSavepoint:

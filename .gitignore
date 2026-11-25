@@ -1,5 +1,15 @@
 .env
-__pycache__
+__pycache__/
+*.py[cod]
 .idea/
 .DS_Store
 prompts.md
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+dist/
+build/
