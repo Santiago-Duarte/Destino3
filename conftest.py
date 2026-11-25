@@ -1,4 +1,1 @@
-import os
-
-# Se fija antes de que cualquier import de src.config lea ENVIRONMENT.
-os.environ["ENVIRONMENT"] = "testing"
+# test/__init__.py fija ENVIRONMENT=testing antes de importar src.config.

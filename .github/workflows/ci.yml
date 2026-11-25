@@ -47,7 +47,7 @@ jobs:
           python-version: "3.13"
 
       - name: Instalar dependencias
-        run: pip install -r requirements-dev.txt
+        run: pip install -r requirements-dev.txt pytest-cov
 
       - name: Crear base de pruebas
         run: |
@@ -56,8 +56,8 @@ jobs:
           PGPASSWORD=postgres psql -h localhost -U postgres -d destino3_test_db \
             -f sql/schema.sql
 
-      - name: Pruebas
-        run: pytest
+      - name: Pruebas con cobertura
+        run: pytest --cov=src --cov-fail-under=90 --cov-branch
 
       - name: Lint
         run: ruff check .
