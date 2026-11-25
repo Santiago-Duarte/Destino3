@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class AnalisisIAOutput(BaseModel):
@@ -24,10 +24,24 @@ class PuntuacionIAOutput(BaseModel):
     """Qué tan bien le va este hotel a esta persona; se calcula por búsqueda y no se guarda."""
 
     hospedaje_id: int
-    score_calidad: int = Field(ge=1, le=10, strict=True)
-    score_cumplimiento: int = Field(ge=1, le=10, strict=True)
-    requisitos_cumplidos: list[str] = []
-    requisitos_faltantes: list[str] = []
+    score_calidad: int = Field(ge=1, le=10)
+    score_cumplimiento: int = Field(ge=1, le=10)
+    requisitos_cumplidos: list[str] = Field(default_factory=list)
+    requisitos_faltantes: list[str] = Field(default_factory=list)
+
+    @field_validator("score_calidad", "score_cumplimiento", mode="before")
+    @classmethod
+    def _entero_sin_strings(cls, valor):
+        """Acepta 8.0 pero rechaza "8", booleanos y decimales no enteros."""
+        if isinstance(valor, bool):
+            raise ValueError("El score debe ser un entero")
+        if isinstance(valor, float):
+            if not valor.is_integer():
+                raise ValueError("El score debe ser un entero")
+            return int(valor)
+        if not isinstance(valor, int):
+            raise ValueError("El score debe ser un entero")
+        return valor
 
 
 class LotePuntuacionesIA(BaseModel):

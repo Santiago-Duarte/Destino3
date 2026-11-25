@@ -9,8 +9,6 @@ from src.exceptions.LoteIAError import LoteIAError
 
 logger = logging.getLogger(__name__)
 
-MODELO_IA = "gemini-3.6-flash"
-
 
 def crear_cliente():
     """Cliente único de Gemini; sin timeout una llamada colgada bloquea el CLI."""
@@ -27,13 +25,16 @@ def crear_cliente():
 def _generar(cliente, prompt: str, schema):
     """Una sola llamada a Gemini con respuesta validada por ``schema``."""
     respuesta = cliente.models.generate_content(
-        model=MODELO_IA,
+        model=settings.GEMINI_MODELO,
         contents=prompt,
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
             response_schema=schema,
+            temperature=settings.GEMINI_TEMPERATURA,
         ),
     )
+    if not respuesta.text:
+        raise ValueError("Gemini devolvió una respuesta vacía")
     return schema.model_validate_json(respuesta.text)
 
 
@@ -50,6 +51,7 @@ def generar(
     una respuesta parcial tras agotar los reintentos.
     """
     mejor_parcial = None
+    ultimo_error: Exception | None = None
 
     for intento in range(settings.GEMINI_MAX_REINTENTOS + 1):
         try:
@@ -67,7 +69,12 @@ def generar(
             if mejor_parcial is None or len(lote) > len(mejor_parcial):
                 mejor_parcial = lote
         except Exception as error:
-            logger.error("Error al consultar Gemini: tipo=%s", type(error).__name__)
+            ultimo_error = error
+            logger.error(
+                "Error al consultar Gemini (%s): %s",
+                type(error).__name__,
+                str(error)[:300],
+            )
 
         if intento < settings.GEMINI_MAX_REINTENTOS:
             time.sleep(settings.GEMINI_BACKOFF_BASE * (2 ** intento))
@@ -75,4 +82,4 @@ def generar(
     if mejor_parcial is not None:
         return mejor_parcial
 
-    raise LoteIAError(operacion, "El lote agotó los reintentos")
+    raise LoteIAError(operacion, "El lote agotó los reintentos") from ultimo_error

@@ -1,50 +1,97 @@
 import json
 
+from src.config import settings
 from src.models.analisis import Analisis
 from src.models.analisis_ia import LoteAnalisisIA, LotePuntuacionesIA
 from src.models.busqueda import EspecificacionBusqueda
 from src.models.hospedaje import Hospedaje
 from src.services import gemini
 
-MAX_CANDIDATOS_IA = 10
+
+def _precio(hospedaje: Hospedaje) -> float | None:
+    if hospedaje.precio_noche is None:
+        return None
+    return float(hospedaje.precio_noche)
+
+
+def _calificacion(hospedaje: Hospedaje) -> float:
+    if hospedaje.calificacion is None:
+        return 0.0
+    return float(hospedaje.calificacion)
+
+
+def _id(hospedaje: Hospedaje) -> int:
+    """Los evaluadores solo operan sobre hospedajes ya persistidos."""
+    if hospedaje.id is None:
+        raise ValueError("El hospedaje debe estar persistido para evaluarse")
+    return hospedaje.id
 
 
 def preseleccionar_candidatos(
         hospedajes: list[Hospedaje],
-        presupuesto_maximo_noche: float,
+        presupuesto_maximo_noche: float | None,
 ) -> list[Hospedaje]:
-    en_presupuesto = [
-        hospedaje
-        for hospedaje in hospedajes
-        if hospedaje.precio_noche is not None
-        and hospedaje.precio_noche <= presupuesto_maximo_noche
-    ]
+    """Ordena por calidad y deja los mejores candidatos dentro del presupuesto.
+
+    Sin presupuesto se conservan también los hoteles sin tarifa conocida;
+    quedan al final porque no se pueden comparar por precio.
+    """
+    if presupuesto_maximo_noche is None:
+        candidatos = list(hospedajes)
+    else:
+        candidatos = []
+        for hospedaje in hospedajes:
+            precio = _precio(hospedaje)
+            if precio is not None and precio <= presupuesto_maximo_noche:
+                candidatos.append(hospedaje)
 
     return sorted(
-        en_presupuesto,
-        key=lambda hospedaje: (-(hospedaje.calificacion or 0), hospedaje.precio_noche),
-    )[:MAX_CANDIDATOS_IA]
+        candidatos,
+        key=lambda hospedaje: (
+            -_calificacion(hospedaje),
+            _precio(hospedaje) is None,
+            _precio(hospedaje) or 0.0,
+        ),
+    )[:settings.MAX_CANDIDATOS_IA]
 
 
-def _resumen_de(hospedaje: Hospedaje) -> dict:
+def _json(datos: list[dict]) -> str:
+    return json.dumps(
+        datos,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        default=str,
+    )
+
+
+def _resumen_intrinseco(hospedaje: Hospedaje) -> dict:
+    """Datos que no cambian con cada búsqueda ni con la tarifa."""
     return {
-        "hospedaje_id": hospedaje.id,
+        "hospedaje_id": _id(hospedaje),
         "nombre": hospedaje.nombre,
-        "precio_noche": hospedaje.precio_noche,
-        "calificacion": hospedaje.calificacion,
-        "direccion": hospedaje.direccion,
+        "tipo": hospedaje.tipo,
+        "descripcion": hospedaje.descripcion or "",
+        "direccion": hospedaje.direccion or "",
     }
+
+
+def _resumen_comercial(hospedaje: Hospedaje) -> dict:
+    resumen = _resumen_intrinseco(hospedaje)
+    resumen["precio_noche"] = _precio(hospedaje)
+    resumen["calificacion"] = hospedaje.calificacion
+    return resumen
 
 
 def _prompt_analisis(resumen_candidatos: list[dict]) -> str:
     return f"""
                 Eres experto en alojamientos. Analiza cada hotel de este JSON:
-                {json.dumps(resumen_candidatos, ensure_ascii=False, indent=4)}
+                {_json(resumen_candidatos)}
 
                 Instrucciones:
-                1. Describe únicamente características objetivas del alojamiento: no evalúes si sirve o no para quien lo busca.
-                2. Responde con exactamente un elemento por cada `hospedaje_id` recibido; no inventes ni omitas ids.
-                3. `resumen_ejecutivo` en una sola frase; `puntos_fuertes` y `puntos_debiles` como hechos separados por punto y coma.
+                1. Describe únicamente características objetivas e intrínsecas del alojamiento: no evalúes si sirve o no para quien lo busca.
+                2. No menciones precios, tarifas ni calificaciones: cambian con cada búsqueda y este análisis se reutiliza.
+                3. Responde con exactamente un elemento por cada `hospedaje_id` recibido; no inventes ni omitas ids.
+                4. `resumen_ejecutivo` en una sola frase; `puntos_fuertes` y `puntos_debiles` como hechos separados por punto y coma.
                 """
 
 
@@ -57,7 +104,7 @@ def _prompt_puntuacion(resumen_candidatos: list[dict], espec: EspecificacionBusq
     preferencias = espec.preferencias.strip() or "Ninguna especificada"
     return f"""
                 Eres un asistente experto en viajes. Puntúa los hoteles de este JSON según lo que pide esta persona:
-                {json.dumps(resumen_candidatos, ensure_ascii=False, indent=4)}
+                {_json(resumen_candidatos)}
 
                 Especificaciones del usuario:
                 - Destino: {espec.ciudad}, {espec.pais}
@@ -82,10 +129,12 @@ class EvaluadorIA:
         """Descripción intrínseca de los candidatos; se persiste y se reutiliza."""
         return gemini.generar(
             self._cliente,
-            _prompt_analisis([_resumen_de(hospedaje) for hospedaje in hospedajes]),
+            _prompt_analisis([
+                _resumen_intrinseco(hospedaje) for hospedaje in hospedajes
+            ]),
             LoteAnalisisIA,
             "analizar",
-            hospedaje_ids={hospedaje.id for hospedaje in hospedajes},
+            hospedaje_ids={_id(hospedaje) for hospedaje in hospedajes},
         )
 
     def puntuar(
@@ -97,8 +146,8 @@ class EvaluadorIA:
         """Doble score contra lo que pidió esta persona; no se persiste."""
         candidatos = []
         for hospedaje in hospedajes:
-            resumen = _resumen_de(hospedaje)
-            analisis_previo = analisis.get(hospedaje.id)
+            resumen = _resumen_comercial(hospedaje)
+            analisis_previo = analisis.get(_id(hospedaje))
             if analisis_previo is not None:
                 resumen["analisis"] = {
                     "resumen_ejecutivo": analisis_previo.resumen_ejecutivo,
@@ -112,5 +161,5 @@ class EvaluadorIA:
             _prompt_puntuacion(candidatos, espec),
             LotePuntuacionesIA,
             "puntuar",
-            hospedaje_ids={hospedaje.id for hospedaje in hospedajes},
+            hospedaje_ids={_id(hospedaje) for hospedaje in hospedajes},
         )

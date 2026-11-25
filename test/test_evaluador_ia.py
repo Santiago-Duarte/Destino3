@@ -1,5 +1,5 @@
-from pathlib import Path
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from src.exceptions.LoteIAError import LoteIAError
@@ -7,7 +7,6 @@ from src.models.analisis import Analisis
 from src.models.busqueda import EspecificacionBusqueda
 from src.models.hospedaje import Hospedaje
 from src.services.evaluador_ia import EvaluadorIA, preseleccionar_candidatos
-
 
 RUTA_FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -112,6 +111,20 @@ class TestPreseleccionarCandidatos(unittest.TestCase):
         nombres = [h.nombre for h in resultado]
         self.assertEqual(nombres, ["h1", "h3"])
 
+    def test_sin_presupuesto_conserva_hoteles_sin_precio_al_final(self):
+        hospedajes = [
+            crear_hospedaje("sin-precio", None, 5.0),
+            crear_hospedaje("caro", 500, 4.0),
+            crear_hospedaje("barato", 50, 4.5),
+        ]
+
+        resultado = preseleccionar_candidatos(hospedajes, None)
+
+        self.assertEqual(
+            [h.nombre for h in resultado],
+            ["sin-precio", "barato", "caro"],
+        )
+
     def test_calificacion_none_se_trata_como_cero(self):
         hospedajes = [
             crear_hospedaje("h1", 10, 5.0),
@@ -149,7 +162,9 @@ class TestAnalizar(unittest.TestCase):
         self.assertEqual(generar.call_count, 1)
         prompt = generar.call_args.kwargs["contents"]
         for id_enviado in (1, 2, 3):
-            self.assertIn(f'"hospedaje_id": {id_enviado}', prompt)
+            self.assertIn(f'"hospedaje_id":{id_enviado}', prompt)
+        self.assertNotIn("precio_noche", prompt)
+        self.assertNotIn('"calificacion"', prompt)
 
     @patch("time.sleep")
     @patch("src.services.gemini.settings.GEMINI_BACKOFF_BASE", 0.5)

@@ -121,6 +121,18 @@ class TestLotePuntuacionesIA(unittest.TestCase):
         with self.assertRaises(ValidationError):
             LotePuntuacionesIA.model_validate_json(JSON_SCORE_TIPO_INCORRECTO)
 
+    def test_score_entero_expresado_como_float_se_acepta(self):
+        lote = LotePuntuacionesIA.model_validate({
+            "puntuaciones": [{
+                "hospedaje_id": 7,
+                "score_calidad": 8.0,
+                "score_cumplimiento": 9.0,
+            }],
+        })
+
+        self.assertEqual(lote.puntuaciones[0].score_calidad, 8)
+        self.assertEqual(lote.puntuaciones[0].score_cumplimiento, 9)
+
     def test_los_lotes_deben_poder_centrarse_por_id_de_hospedaje(self):
         puntuacion = PuntuacionIAOutput(
             hospedaje_id=1, score_calidad=1, score_cumplimiento=10
