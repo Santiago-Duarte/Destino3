@@ -13,8 +13,6 @@ from src.models.busqueda import EspecificacionBusqueda
 from src.models.hospedaje import Hospedaje
 from src.orchestrator.orquestador_integracion import OrquestadorIntegracion
 
-FRASE = "quiero hoteles en Medellin hasta 100 USD cerca del metro"
-
 
 def crear_hospedaje(nombre: str) -> Hospedaje:
     return Hospedaje(
@@ -53,7 +51,7 @@ def puntuacion_de(
     )
 
 
-class TestBuscarDesdeFrase(unittest.TestCase):
+class TestBuscar(unittest.TestCase):
 
     def setUp(self):
         self.espec = EspecificacionBusqueda(
@@ -62,7 +60,6 @@ class TestBuscarDesdeFrase(unittest.TestCase):
             presupuesto_max_noche=100,
             preferencias="cerca del metro",
         )
-        self.interpretar = Mock(return_value=self.espec)
         self.buscar = Mock(return_value=[crear_hospedaje("Hotel A"), crear_hospedaje("Hotel B")])
         self.hospedajes_repo = Mock()
         self.hospedajes_repo.guardar_lote.return_value = [101, 102]
@@ -82,17 +79,15 @@ class TestBuscarDesdeFrase(unittest.TestCase):
         ])
         self.orquestador = OrquestadorIntegracion(
             buscar_hospedajes=self.buscar,
-            interpretar=self.interpretar,
             hospedajes_repo=self.hospedajes_repo,
             analisis_repo=self.analisis_repo,
             evaluador=self.evaluador,
         )
 
-    def test_interpreta_busca_persiste_analiza_puntua_y_ordena(self):
-        resultado = self.orquestador.buscar_desde_frase(FRASE)
+    def test_busca_persiste_analiza_puntua_y_ordena(self):
+        resultado = self.orquestador.buscar(self.espec)
 
-        self.interpretar.assert_called_once_with(FRASE)
-        self.buscar.assert_called_once_with("Medellin", "Colombia", 100)
+        self.buscar.assert_called_once_with(self.espec)
         self.assertEqual(
             [candidato.hospedaje.id for candidato in resultado.candidatos],
             [102, 101],
@@ -104,7 +99,7 @@ class TestBuscarDesdeFrase(unittest.TestCase):
         self.assertEqual(resultado.candidatos[0].analisis.resumen_ejecutivo, "Análisis B")
 
     def test_persiste_el_analisis_nuevo_de_cada_candidato(self):
-        self.orquestador.buscar_desde_frase(FRASE)
+        self.orquestador.buscar(self.espec)
 
         self.evaluador.analizar.assert_called_once()
         ids_analizados = [hospedaje.id for hospedaje in
@@ -121,7 +116,7 @@ class TestBuscarDesdeFrase(unittest.TestCase):
             102: Analisis("Análisis guardado B", "Fuertes", "Débiles", 102),
         }
 
-        resultado = self.orquestador.buscar_desde_frase(FRASE)
+        resultado = self.orquestador.buscar(self.espec)
 
         self.evaluador.analizar.assert_not_called()
         self.assertIsNone(self.analisis_repo.guardar_lote.call_args)
@@ -133,7 +128,7 @@ class TestBuscarDesdeFrase(unittest.TestCase):
     def test_sin_hospedajes_no_persiste_ni_evalua(self):
         self.buscar.return_value = []
 
-        resultado = self.orquestador.buscar_desde_frase(FRASE)
+        resultado = self.orquestador.buscar(self.espec)
 
         self.assertEqual(resultado.candidatos, [])
         self.assertEqual(resultado.mejores(), [])
@@ -146,7 +141,7 @@ class TestBuscarDesdeFrase(unittest.TestCase):
             puntuaciones=[puntuacion_de(101, calidad=8, cumplimiento=4)]
         )
 
-        resultado = self.orquestador.buscar_desde_frase(FRASE)
+        resultado = self.orquestador.buscar(self.espec)
 
         self.assertEqual(
             [candidato.hospedaje.id for candidato in resultado.candidatos],
@@ -166,7 +161,7 @@ class TestBuscarDesdeFrase(unittest.TestCase):
                           cumplidos=("cerca del metro",)),
         ])
 
-        resultado = self.orquestador.buscar_desde_frase(FRASE)
+        resultado = self.orquestador.buscar(self.espec)
 
         self.assertEqual(
             [candidato.hospedaje.id for candidato in resultado.candidatos],
@@ -178,7 +173,7 @@ class TestBuscarDesdeFrase(unittest.TestCase):
         )
 
     def test_sin_requisitos_en_la_frase_entran_todos_los_puntuados(self):
-        self.interpretar.return_value = EspecificacionBusqueda(
+        sin_requisitos = EspecificacionBusqueda(
             ciudad="Medellin", pais="Colombia"
         )
         self.evaluador.puntuar.return_value = LotePuntuacionesIA(puntuaciones=[
@@ -186,15 +181,15 @@ class TestBuscarDesdeFrase(unittest.TestCase):
             puntuacion_de(102, calidad=6, cumplimiento=4, cumplidos=()),
         ])
 
-        resultado = self.orquestador.buscar_desde_frase("hoteles en Medellin")
+        resultado = self.orquestador.buscar(sin_requisitos)
 
-        self.buscar.assert_called_once_with("Medellin", "Colombia", None)
+        self.buscar.assert_called_once_with(sin_requisitos)
         self.assertEqual(len(resultado.mejores()), 2)
 
     def test_fallo_de_la_ia_al_analizar_no_interrumpe_la_busqueda(self):
         self.evaluador.analizar.side_effect = LoteIAError("analizar", "falló")
 
-        resultado = self.orquestador.buscar_desde_frase(FRASE)
+        resultado = self.orquestador.buscar(self.espec)
 
         self.assertEqual(len(resultado.candidatos), 2)
         self.assertIsNone(resultado.candidatos[0].analisis)
@@ -204,7 +199,7 @@ class TestBuscarDesdeFrase(unittest.TestCase):
     def test_fallo_de_la_ia_al_puntuar_conserva_los_candidatos_sin_puntaje(self):
         self.evaluador.puntuar.side_effect = LoteIAError("puntuar", "falló")
 
-        resultado = self.orquestador.buscar_desde_frase(FRASE)
+        resultado = self.orquestador.buscar(self.espec)
 
         self.assertEqual(
             [candidato.hospedaje.nombre for candidato in resultado.candidatos],
@@ -214,16 +209,6 @@ class TestBuscarDesdeFrase(unittest.TestCase):
             all(candidato.score_cumplimiento is None for candidato in resultado.candidatos)
         )
         self.assertEqual(resultado.mejores(), [])
-
-    def test_frase_sin_ciudad_falla_antes_de_buscar(self):
-        self.interpretar.side_effect = ValueError(
-            "La frase no indica la ciudad o el país de la búsqueda."
-        )
-
-        with self.assertRaises(ValueError):
-            self.orquestador.buscar_desde_frase("quiero hoteles baratos")
-
-        self.buscar.assert_not_called()
 
 
 if __name__ == "__main__":

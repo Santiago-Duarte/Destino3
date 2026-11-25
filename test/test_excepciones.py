@@ -1,4 +1,5 @@
 import unittest
+from datetime import date
 from unittest.mock import MagicMock, patch
 
 import requests
@@ -10,9 +11,17 @@ from src.exceptions import (
     PersistenciaError,
     SerpApiError,
 )
+from src.models.busqueda import EspecificacionBusqueda
 from src.models.destino import Destino
 from src.repositories.destino_repository import DestinoRepository
 from src.services.buscador_serpapi import consultar_serpapi
+
+ESPEC = EspecificacionBusqueda(
+    ciudad="Medellin",
+    pais="Colombia",
+    fecha_entrada=date(2026, 8, 14),
+    fecha_salida=date(2026, 8, 16),
+)
 
 
 class TestExcepcionesPersonalizadas(unittest.TestCase):
@@ -40,7 +49,7 @@ class TestExcepcionesPersonalizadas(unittest.TestCase):
         get_mock.side_effect = causa
 
         with self.assertRaises(SerpApiError) as contexto:
-            consultar_serpapi("Medellin", "Colombia")
+            consultar_serpapi(ESPEC)
 
         self.assertIs(contexto.exception.__cause__, causa)
         self.assertEqual(contexto.exception.proveedor, "SerpAPI")

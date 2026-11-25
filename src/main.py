@@ -1,15 +1,16 @@
 import argparse
 import logging
 
+from src.cli.prompts import (
+    completar_especificacion,
+    confirmar,
+    formatear_ocupacion,
+    formatear_presupuesto,
+    pedir_frase,
+)
 from src.exceptions import Destino3Error
 
 logger = logging.getLogger(__name__)
-
-
-PREGUNTA_FRASE = (
-    '¿Qué hoteles buscas? '
-    '(ej. "hoteles en Medellin hasta 100 USD cerca del metro"): '
-)
 
 
 def crear_parser() -> argparse.ArgumentParser:
@@ -18,29 +19,17 @@ def crear_parser() -> argparse.ArgumentParser:
     )
 
 
-def _pedir_frase() -> str | None:
-    """Pide la frase por consola hasta recibir una no vacía."""
-    while True:
-        try:
-            frase = input(PREGUNTA_FRASE).strip()
-        except (EOFError, KeyboardInterrupt):
-            print("\nNo se recibió ninguna frase.")
-            return None
-
-        if frase:
-            return frase
-
-        print("La frase no puede estar vacía. Inténtalo de nuevo.")
-
-
 def _nombre_destino(espec) -> str:
     return f"{espec.ciudad}, {espec.pais}"
 
 
-def _presupuesto(espec) -> str:
-    if espec.presupuesto_max_noche is None:
-        return "sin límite"
-    return f"hasta USD ${espec.presupuesto_max_noche:g}/noche"
+def _fechas(espec) -> str:
+    if espec.fecha_entrada is None or espec.fecha_salida is None:
+        return "fechas sin definir"
+    return (
+        f"{espec.fecha_entrada:%d/%m} → {espec.fecha_salida:%d/%m}"
+        f" ({espec.noches()} noches)"
+    )
 
 
 def _precio_noche(hospedaje) -> str:
@@ -57,7 +46,8 @@ def _calificacion(hospedaje) -> str:
 
 def _imprimir(resultado) -> None:
     espec = resultado.especificacion
-    print(f"\nBúsqueda: {_nombre_destino(espec)} | presupuesto: {_presupuesto(espec)}")
+    print(f"\nBúsqueda: {_nombre_destino(espec)} | {_fechas(espec)} | {formatear_ocupacion(espec)}")
+    print(f"Presupuesto: {formatear_presupuesto(espec)}")
     print(f"Preferencias: {espec.preferencias or 'ninguna'}")
 
     if not resultado.candidatos:
@@ -100,14 +90,29 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     crear_parser().parse_args(argv)
 
-    frase = _pedir_frase()
+    frase = pedir_frase()
     if frase is None:
         return 1
 
     from src.orchestrator.orquestador_integracion import OrquestadorIntegracion
+    from src.services.interpretador_ia import InterpretadorIA
 
     try:
-        resultado = OrquestadorIntegracion().buscar_desde_frase(frase)
+        espec = InterpretadorIA().interpretar(frase)
+
+        inferidos = completar_especificacion(espec)
+        if inferidos is None:
+            return 1
+
+        if inferidos:
+            confirmado = confirmar(espec)
+            if confirmado is None:
+                return 1
+            if not confirmado:
+                print("Búsqueda cancelada.")
+                return 0
+
+        resultado = OrquestadorIntegracion().buscar(espec)
     except (ValueError, Destino3Error) as error:
         logger.error("%s", error)
         return 1

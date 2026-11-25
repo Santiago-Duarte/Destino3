@@ -14,8 +14,6 @@ from src.orchestrator.orquestador_integracion import OrquestadorIntegracion
 from src.repositories.analisis_ia_repository import AnalisisIARepository
 from test.db_test_case import BaseDBTestCase
 
-FRASE = "quiero hoteles en Medellin hasta 100 USD cerca del metro"
-
 
 class TestIntegracionFlujoCompleto(BaseDBTestCase):
 
@@ -23,6 +21,12 @@ class TestIntegracionFlujoCompleto(BaseDBTestCase):
         super().setUp()
         self.destino_id = self.crear_destino(ciudad=f"Medellin_{uuid.uuid4().hex}")
         self.tokens = [f"ChIJ-{uuid.uuid4().hex}-A", f"ChIJ-{uuid.uuid4().hex}-B"]
+        self.espec = EspecificacionBusqueda(
+            ciudad="Medellin",
+            pais="Colombia",
+            presupuesto_max_noche=100,
+            preferencias="cerca del metro",
+        )
 
     def _hospedajes_nuevos(self):
         return [
@@ -71,12 +75,6 @@ class TestIntegracionFlujoCompleto(BaseDBTestCase):
     def _orquestador(self, evaluador):
         return OrquestadorIntegracion(
             buscar_hospedajes=Mock(side_effect=lambda *_argumentos: self._hospedajes_nuevos()),
-            interpretar=Mock(return_value=EspecificacionBusqueda(
-                ciudad="Medellin",
-                pais="Colombia",
-                presupuesto_max_noche=100,
-                preferencias="cerca del metro",
-            )),
             hospedajes_repo=self.hospedaje_repo,
             analisis_repo=AnalisisIARepository(),
             evaluador=evaluador,
@@ -85,7 +83,7 @@ class TestIntegracionFlujoCompleto(BaseDBTestCase):
     def test_persiste_hospedajes_y_analisis_y_devuelve_el_top_ordenado(self):
         evaluador = self._evaluador()
 
-        resultado = self._orquestador(evaluador).buscar_desde_frase(FRASE)
+        resultado = self._orquestador(evaluador).buscar(self.espec)
 
         persistidos = self.hospedaje_repo.obtener_por_destino(self.destino_id)
         self.assertEqual(len(persistidos), 2)
@@ -108,9 +106,9 @@ class TestIntegracionFlujoCompleto(BaseDBTestCase):
         evaluador = self._evaluador()
         orquestador = self._orquestador(evaluador)
 
-        primera = orquestador.buscar_desde_frase(FRASE)
+        primera = orquestador.buscar(self.espec)
         evaluador.analizar.reset_mock()
-        segunda = orquestador.buscar_desde_frase(FRASE)
+        segunda = orquestador.buscar(self.espec)
 
         self.assertEqual(
             sorted(candidato.hospedaje.id for candidato in segunda.candidatos),

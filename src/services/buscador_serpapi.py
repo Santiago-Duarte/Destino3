@@ -2,13 +2,13 @@ import logging
 import math
 import threading
 import time
-from datetime import datetime, timedelta
 from urllib.parse import quote
 
 import requests
 
 from src.config import settings
 from src.exceptions import SerpApiError
+from src.models.busqueda import EspecificacionBusqueda
 from src.models.destino import Destino
 from src.models.hospedaje import Hospedaje
 from src.repositories.destino_repository import DestinoRepository
@@ -84,27 +84,30 @@ def _es_reintentable(status_code: int | None) -> bool:
     )
 
 
-def _parametros_de_busqueda(
-        ciudad: str,
-        pais: str,
-        precio_maximo_noche: float | None,
-        fecha_entrada: datetime,
-        fecha_salida: datetime,
-) -> dict[str, str | int]:
+def _parametros_de_busqueda(espec: EspecificacionBusqueda) -> dict[str, str | int]:
+    if espec.fecha_entrada is None or espec.fecha_salida is None:
+        raise ValueError("La búsqueda requiere fecha de entrada y salida.")
+
     parametros: dict[str, str | int] = {
         "engine": "google_hotels",
-        "q": _consulta_hoteles(ciudad, pais),
-        "check_in_date": fecha_entrada.strftime("%Y-%m-%d"),
-        "check_out_date": fecha_salida.strftime("%Y-%m-%d"),
+        "q": _consulta_hoteles(espec.ciudad, espec.pais),
+        "check_in_date": espec.fecha_entrada.isoformat(),
+        "check_out_date": espec.fecha_salida.isoformat(),
+        "adults": espec.adultos if espec.adultos is not None else 2,
+        "children": espec.ninos if espec.ninos is not None else 0,
         "currency": "USD",
         "hl": "es",
         "api_key": settings.SERPAPI_KEY,
     }
 
-    if precio_maximo_noche is not None and math.isfinite(precio_maximo_noche):
+    if espec.mascotas:
+        # 19 = "Pet-friendly" en el catálogo de amenities de Google Hotels.
+        parametros["amenities"] = "19"
+
+    if espec.presupuesto_max_noche is not None and math.isfinite(espec.presupuesto_max_noche):
         # La API espera un entero; ceil evita perder hoteles que sí caben
         # en el presupuesto y el filtro local hace el corte exacto.
-        parametros["max_price"] = math.ceil(precio_maximo_noche)
+        parametros["max_price"] = math.ceil(espec.presupuesto_max_noche)
 
     return parametros
 
@@ -256,25 +259,12 @@ def _unir_paginas(
     return respuesta_unida
 
 
-def consultar_serpapi(
-        ciudad: str,
-        pais: str,
-        precio_maximo_noche: float | None = None,
-) -> dict:
+def consultar_serpapi(espec: EspecificacionBusqueda) -> dict:
     if not settings.SERPAPI_KEY:
         logger.error("Falta la credencial requerida del proveedor")
         raise SerpApiError("configuracion", "Falta la credencial del proveedor")
 
-    # Estancia provisoria: el flujo con fechas reales llega con RF-3.
-    fecha_entrada = datetime.now() + timedelta(days=7)
-    fecha_salida = fecha_entrada + timedelta(days=2)
-    parametros_base = _parametros_de_busqueda(
-        ciudad,
-        pais,
-        precio_maximo_noche,
-        fecha_entrada,
-        fecha_salida,
-    )
+    parametros_base = _parametros_de_busqueda(espec)
     respuesta_inicial, propiedades = _recolectar_propiedades(
         parametros_base,
         settings.SERPAPI_MAX_PAGES,
@@ -283,30 +273,20 @@ def consultar_serpapi(
     return _unir_paginas(respuesta_inicial, propiedades, parametros_base)
 
 
-def buscar_hospedajes(
-        ciudad: str,
-        pais: str,
-        precio_maximo_noche: float | None = None,
-) -> list[Hospedaje]:
+def buscar_hospedajes(espec: EspecificacionBusqueda) -> list[Hospedaje]:
     """Busca hoteles y resuelve su destino.
 
     Los fallos de SerpAPI o de PostgreSQL se propagan: el CLI debe poder
     distinguir entre “no hay resultados” y “no se pudo buscar”.
     """
-    respuesta = consultar_serpapi(ciudad, pais, precio_maximo_noche)
+    respuesta = consultar_serpapi(espec)
     if not respuesta.get("properties"):
         return []
 
     id_destino = DestinoRepository().obtener_o_crear(
-        Destino(ciudad=ciudad, pais=pais)
+        Destino(ciudad=espec.ciudad, pais=espec.pais)
     )
-    return mapear_hospedajes(
-        respuesta,
-        id_destino,
-        precio_maximo_noche,
-        ciudad,
-        pais,
-    )
+    return mapear_hospedajes(respuesta, id_destino, espec)
 
 
 def _numero(valor) -> float | None:
@@ -329,22 +309,21 @@ def _tipo_hospedaje(propiedad: dict) -> str:
 def mapear_hospedajes(
         respuesta: dict,
         id_destino: int,
-        precio_maximo_noche: float | None,
-        ciudad: str,
-        pais: str,
+        espec: EspecificacionBusqueda,
 ) -> list[Hospedaje]:
-    parametros = respuesta.get("search_parameters", {})
-    fecha_entrada = parametros.get("check_in_date")
-    fecha_salida = parametros.get("check_out_date")
-    consulta = _consulta_hoteles(ciudad, pais)
+    # Las fechas salen de la especificación: la URL de reserva debe coincidir
+    # con la búsqueda aunque la respuesta no repita los parámetros.
+    fecha_entrada = espec.fecha_entrada.isoformat() if espec.fecha_entrada else None
+    fecha_salida = espec.fecha_salida.isoformat() if espec.fecha_salida else None
+    consulta = _consulta_hoteles(espec.ciudad, espec.pais)
 
     hospedajes = []
     for propiedad in respuesta.get("properties", []):
         tarifa_noche = propiedad.get("rate_per_night") or {}
         precio_noche = _numero(tarifa_noche.get("extracted_lowest"))
 
-        if precio_maximo_noche is not None and (
-                precio_noche is None or precio_noche > precio_maximo_noche
+        if espec.presupuesto_max_noche is not None and (
+                precio_noche is None or precio_noche > espec.presupuesto_max_noche
         ):
             continue
 

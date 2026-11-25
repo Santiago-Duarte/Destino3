@@ -1,12 +1,14 @@
 import threading
 import time
 import unittest
+from datetime import date
 from unittest.mock import patch
 
 import requests
 
 from src.config import settings
 from src.exceptions import SerpApiError
+from src.models.busqueda import EspecificacionBusqueda
 from src.repositories.hospedaje_repository import HospedajeRepository
 from src.services.buscador_serpapi import (
     buscar_hospedajes,
@@ -14,6 +16,20 @@ from src.services.buscador_serpapi import (
     consultar_serpapi,
 )
 from test.db_test_case import BaseDBTestCase
+
+ESPEC = EspecificacionBusqueda(
+    ciudad="Medellin",
+    pais="Colombia",
+    fecha_entrada=date(2026, 8, 14),
+    fecha_salida=date(2026, 8, 16),
+    adultos=2,
+    ninos=0,
+    mascotas=False,
+)
+
+
+def espec_con(**cambios) -> EspecificacionBusqueda:
+    return ESPEC.model_copy(update=cambios)
 
 
 def respuesta_mock():
@@ -70,7 +86,7 @@ class TestBuscarHospedajes(unittest.TestCase):
     def test_usar_link_de_entidad_con_fechas_de_search_parameters(self, raw_mock):
         raw_mock.return_value = respuesta_mock()
 
-        hospedajes = buscar_hospedajes("Medellin", "Colombia")
+        hospedajes = buscar_hospedajes(ESPEC)
 
         self.assertEqual(len(hospedajes), 2)
         self.assertTrue(hospedajes[0].url_reserva.startswith(
@@ -82,15 +98,26 @@ class TestBuscarHospedajes(unittest.TestCase):
     def test_fallback_al_sitio_del_hotel_sin_property_token(self, raw_mock):
         raw_mock.return_value = respuesta_mock()
 
-        hospedajes = buscar_hospedajes("Medellin", "Colombia")
+        hospedajes = buscar_hospedajes(ESPEC)
 
         self.assertEqual(hospedajes[1].url_reserva, "https://hotelb.com")
+
+    @patch("src.services.buscador_serpapi.consultar_serpapi")
+    def test_url_de_reserva_usa_las_fechas_de_la_especificacion(self, raw_mock):
+        respuesta = respuesta_mock()
+        respuesta.pop("search_parameters")
+        raw_mock.return_value = respuesta
+
+        hospedajes = buscar_hospedajes(ESPEC)
+
+        self.assertIn("check_in=2026-08-14", hospedajes[0].url_reserva)
+        self.assertIn("check_out=2026-08-16", hospedajes[0].url_reserva)
 
     @patch("src.services.buscador_serpapi.consultar_serpapi")
     def test_filtra_por_presupuesto(self, raw_mock):
         raw_mock.return_value = respuesta_mock()
 
-        hospedajes = buscar_hospedajes("Medellin", "Colombia", precio_maximo_noche=70)
+        hospedajes = buscar_hospedajes(espec_con(presupuesto_max_noche=70))
 
         self.assertEqual(len(hospedajes), 1)
         self.assertEqual(hospedajes[0].nombre, "Hotel A")
@@ -102,7 +129,7 @@ class TestBuscarHospedajes(unittest.TestCase):
             with self.subTest(respuesta=respuesta):
                 raw_mock.return_value = respuesta
 
-                resultado = buscar_hospedajes("Medellin", "Colombia")
+                resultado = buscar_hospedajes(ESPEC)
 
                 self.assertEqual(resultado, [])
         destino_mock.assert_not_called()
@@ -111,7 +138,7 @@ class TestBuscarHospedajes(unittest.TestCase):
     def test_todos_los_hospedajes_llevan_el_destino_resuelto(self, raw_mock):
         raw_mock.return_value = respuesta_mock()
 
-        hospedajes = buscar_hospedajes("Medellin", "Colombia")
+        hospedajes = buscar_hospedajes(ESPEC)
 
         self.assertEqual(len(hospedajes), 2)
         for hospedaje in hospedajes:
@@ -123,7 +150,7 @@ class TestBuscarHospedajes(unittest.TestCase):
         respuesta["properties"][1]["link"] = "hotelb.com/reservas"
         raw_mock.return_value = respuesta
 
-        hospedajes = buscar_hospedajes("Medellin", "Colombia")
+        hospedajes = buscar_hospedajes(ESPEC)
 
         self.assertEqual(hospedajes[1].url_reserva, "https://hotelb.com/reservas")
 
@@ -134,7 +161,7 @@ class TestBuscarHospedajes(unittest.TestCase):
         respuesta["properties"][0]["type"] = "vacation_rental"
         raw_mock.return_value = respuesta
 
-        hospedajes = buscar_hospedajes("Medellin", "Colombia")
+        hospedajes = buscar_hospedajes(ESPEC)
 
         self.assertIsNone(hospedajes[0].calificacion)
         self.assertEqual(hospedajes[0].tipo, "otro")
@@ -146,7 +173,7 @@ class TestBuscarHospedajes(unittest.TestCase):
         respuesta["properties"][0]["description"] = "x" * 250
         raw_mock.return_value = respuesta
 
-        hospedajes = buscar_hospedajes("Medellin", "Colombia")
+        hospedajes = buscar_hospedajes(ESPEC)
 
         self.assertEqual(len(hospedajes[0].descripcion), 250)
         self.assertIsNone(hospedajes[0].direccion)
@@ -158,7 +185,7 @@ class TestBuscarHospedajes(unittest.TestCase):
         respuesta["properties"][0]["address"] = "Calle 10 #20-30"
         raw_mock.return_value = respuesta
 
-        hospedajes = buscar_hospedajes("Medellin", "Colombia")
+        hospedajes = buscar_hospedajes(ESPEC)
 
         self.assertEqual(hospedajes[0].descripcion, "Hotel con piscina")
         self.assertEqual(hospedajes[0].direccion, "Calle 10 #20-30")
@@ -169,7 +196,7 @@ class TestBuscarHospedajes(unittest.TestCase):
         respuesta["properties"][0].pop("rate_per_night")
         raw_mock.return_value = respuesta
 
-        hospedajes = buscar_hospedajes("Medellin", "Colombia")
+        hospedajes = buscar_hospedajes(ESPEC)
 
         self.assertEqual(len(hospedajes), 2)
         self.assertIsNone(hospedajes[0].precio_noche)
@@ -178,7 +205,7 @@ class TestBuscarHospedajes(unittest.TestCase):
     def test_destino_se_resuelve_una_sola_vez_con_el_destino_correcto(self, raw_mock):
         raw_mock.return_value = respuesta_mock()
 
-        buscar_hospedajes("Medellin", "Colombia")
+        buscar_hospedajes(ESPEC)
 
         from src.services import buscador_serpapi
         buscador_serpapi.DestinoRepository.obtener_o_crear.assert_called_once()
@@ -190,15 +217,15 @@ class TestBuscarHospedajes(unittest.TestCase):
         buscador_serpapi.DestinoRepository.obtener_o_crear.side_effect = ValueError("ciudad vacía")
 
         with self.assertRaises(ValueError):
-            buscar_hospedajes("Medellin", "Colombia")
+            buscar_hospedajes(ESPEC)
 
     @patch("src.services.buscador_serpapi.consultar_serpapi")
     def test_si_consultar_serpapi_falla_propaga_el_error(self, raw_mock):
         raw_mock.side_effect = SerpApiError("consulta", "error de red")
 
         with self.assertRaises(SerpApiError):
-            buscar_hospedajes("Medellin", "Colombia")
-        raw_mock.assert_called_once_with("Medellin", "Colombia", None)
+            buscar_hospedajes(ESPEC)
+        raw_mock.assert_called_once_with(ESPEC)
 
 
 class TestConsultarSerpapi(unittest.TestCase):
@@ -210,7 +237,7 @@ class TestConsultarSerpapi(unittest.TestCase):
         get_mock.side_effect = requests.exceptions.ConnectionError("sin red")
 
         with self.assertRaises(SerpApiError):
-            consultar_serpapi("Medellin", "Colombia")
+            consultar_serpapi(ESPEC)
 
     @patch("src.services.buscador_serpapi.requests.get")
     def test_error_de_api_en_json_lanza_serpapi_error(self, get_mock):
@@ -220,12 +247,12 @@ class TestConsultarSerpapi(unittest.TestCase):
         get_mock.return_value = respuesta
 
         with self.assertRaises(SerpApiError):
-            consultar_serpapi("Medellin", "Colombia")
+            consultar_serpapi(ESPEC)
 
     @patch("src.services.buscador_serpapi.settings.SERPAPI_KEY", "")
     def test_falta_serpapi_key_lanza_serpapi_error(self):
         with self.assertRaises(SerpApiError):
-            consultar_serpapi("Medellin", "Colombia")
+            consultar_serpapi(ESPEC)
 
     @patch("src.services.buscador_serpapi.settings.SERPAPI_KEY", "clave-prueba")
     @patch("src.services.buscador_serpapi.requests.get")
@@ -235,14 +262,35 @@ class TestConsultarSerpapi(unittest.TestCase):
         respuesta.json.return_value = {"properties": []}
         get_mock.return_value = respuesta
 
-        resultado = consultar_serpapi("Medellin", "Colombia", precio_maximo_noche=80)
+        resultado = consultar_serpapi(espec_con(presupuesto_max_noche=80))
 
         parametros = get_mock.call_args.kwargs["params"]
         self.assertEqual(parametros["max_price"], 80)
-        self.assertIn("check_in_date", parametros)
-        self.assertIn("check_out_date", parametros)
+        self.assertEqual(parametros["check_in_date"], "2026-08-14")
+        self.assertEqual(parametros["check_out_date"], "2026-08-16")
+        self.assertEqual(parametros["adults"], 2)
+        self.assertEqual(parametros["children"], 0)
+        self.assertEqual(parametros["currency"], "USD")
         self.assertEqual(resultado, {"properties": []})
         self.assertEqual(get_mock.call_args.kwargs["timeout"], settings.SERPAPI_TIMEOUT)
+
+    @patch("src.services.buscador_serpapi.settings.SERPAPI_KEY", "clave-prueba")
+    @patch("src.services.buscador_serpapi.requests.get")
+    def test_mascotas_filtra_por_amenity_pet_friendly(self, get_mock):
+        respuesta = unittest.mock.Mock()
+        respuesta.raise_for_status.return_value = None
+        respuesta.json.return_value = {"properties": []}
+        get_mock.return_value = respuesta
+
+        consultar_serpapi(espec_con(mascotas=True))
+
+        parametros = get_mock.call_args.kwargs["params"]
+        self.assertEqual(parametros["amenities"], "19")
+
+    @patch("src.services.buscador_serpapi.settings.SERPAPI_KEY", "clave-prueba")
+    def test_sin_fechas_falla_antes_de_llamar_a_serpapi(self):
+        with self.assertRaises(ValueError):
+            consultar_serpapi(espec_con(fecha_entrada=None))
 
 
 class TestIntegracionBuscarYGuardar(BaseDBTestCase):
@@ -250,7 +298,7 @@ class TestIntegracionBuscarYGuardar(BaseDBTestCase):
     @patch("src.services.buscador_serpapi.consultar_serpapi")
     def test_integracion_buscar_y_guardar_persiste(self, mock_raw):
         mock_raw.return_value = respuesta_mock()
-        hospedajes = buscar_hospedajes("Medellin", "Colombia")
+        hospedajes = buscar_hospedajes(ESPEC)
         self.assertEqual(len(hospedajes), 2)
         hospedaje_repo = HospedajeRepository()
         ids = hospedaje_repo.guardar_lote(hospedajes)
@@ -305,7 +353,7 @@ class TestConsultarSerpapiPaginacion(unittest.TestCase):
         ]
         get_mock.side_effect = self._mock_get_por_pagina(paginas)
 
-        resultado = consultar_serpapi("Medellin", "Colombia")
+        resultado = consultar_serpapi(ESPEC)
 
         self.assertEqual(get_mock.call_count, 2)
         nombres = [p["name"] for p in resultado["properties"]]
@@ -322,7 +370,7 @@ class TestConsultarSerpapiPaginacion(unittest.TestCase):
         ]
         get_mock.side_effect = self._mock_get_por_pagina(paginas)
 
-        resultado = consultar_serpapi("Medellin", "Colombia")
+        resultado = consultar_serpapi(ESPEC)
 
         # Página 1 aporta 2 (total 2), página 2 aporta 2 (total 4) → trunca a 3 y detiene.
         self.assertEqual(get_mock.call_count, 2)
@@ -339,7 +387,7 @@ class TestConsultarSerpapiPaginacion(unittest.TestCase):
         ]
         get_mock.side_effect = self._mock_get_por_pagina(paginas)
 
-        resultado = consultar_serpapi("Medellin", "Colombia")
+        resultado = consultar_serpapi(ESPEC)
 
         self.assertEqual(get_mock.call_count, 2)
         self.assertEqual([p["name"] for p in resultado["properties"]], ["A", "B"])
@@ -353,7 +401,7 @@ class TestConsultarSerpapiPaginacion(unittest.TestCase):
         ]
         get_mock.side_effect = self._mock_get_por_pagina(paginas)
 
-        consultar_serpapi("Medellin", "Colombia")
+        consultar_serpapi(ESPEC)
 
         # Primera llamada sin next_page_token
         primera_params = get_mock.call_args_list[0].kwargs["params"]
@@ -375,7 +423,7 @@ class TestConsultarSerpapiPaginacion(unittest.TestCase):
         ]
         get_mock.side_effect = self._mock_get_por_pagina(paginas)
 
-        resultado = consultar_serpapi("Medellin", "Colombia")
+        resultado = consultar_serpapi(ESPEC)
 
         self.assertEqual(resultado["search_parameters"]["check_in_date"], "2026-08-14")
         self.assertEqual(resultado["search_parameters"]["check_out_date"], "2026-08-16")
@@ -389,7 +437,7 @@ class TestConsultarSerpapiPaginacion(unittest.TestCase):
         ]
         get_mock.side_effect = self._mock_get_por_pagina(paginas)
 
-        resultado = consultar_serpapi("Medellin", "Colombia")
+        resultado = consultar_serpapi(ESPEC)
 
         self.assertNotIn("serpapi_pagination", resultado)
 
@@ -423,7 +471,7 @@ class TestConsultarSerpapiRateLimit(unittest.TestCase):
     def test_429_se_recupera_con_reintento_y_backoff(self, get_mock, sleep_mock):
         get_mock.side_effect = [self._respuesta_429(), self._respuesta_ok([{"name": "A"}])]
 
-        resultado = consultar_serpapi("Medellin", "Colombia")
+        resultado = consultar_serpapi(ESPEC)
 
         self.assertEqual(get_mock.call_count, 2)
         self.assertEqual([p["name"] for p in resultado["properties"]], ["A"])
@@ -437,7 +485,7 @@ class TestConsultarSerpapiRateLimit(unittest.TestCase):
     def test_retry_after_usa_el_maximo_entre_header_y_backoff(self, get_mock, sleep_mock):
         get_mock.side_effect = [self._respuesta_429(retry_after=2), self._respuesta_ok([{"name": "A"}])]
 
-        consultar_serpapi("Medellin", "Colombia")
+        consultar_serpapi(ESPEC)
 
         sleep_mock.assert_called_once_with(2.0)
 
@@ -453,7 +501,7 @@ class TestConsultarSerpapiRateLimit(unittest.TestCase):
             self._respuesta_429(),
         ]
 
-        resultado = consultar_serpapi("Medellin", "Colombia")
+        resultado = consultar_serpapi(ESPEC)
 
         self.assertEqual(get_mock.call_count, 3)
         self.assertEqual([p["name"] for p in resultado["properties"]], ["A"])
@@ -475,7 +523,7 @@ class TestConsultarSerpapiRateLimit(unittest.TestCase):
 
         def ejecutar():
             barrera.wait()
-            consultar_serpapi("Medellin", "Colombia")
+            consultar_serpapi(ESPEC)
 
         hilos = [threading.Thread(target=ejecutar) for _ in range(2)]
         for hilo in hilos:
@@ -500,7 +548,7 @@ class TestConsultarSerpapiRateLimit(unittest.TestCase):
         )
         get_mock.side_effect = [respuesta_503, self._respuesta_ok([{"name": "A"}])]
 
-        resultado = consultar_serpapi("Medellin", "Colombia")
+        resultado = consultar_serpapi(ESPEC)
 
         self.assertEqual(get_mock.call_count, 2)
         self.assertEqual([p["name"] for p in resultado["properties"]], ["A"])
@@ -517,7 +565,7 @@ class TestConsultarSerpapiRateLimit(unittest.TestCase):
             self._respuesta_ok([{"name": "A"}]),
         ]
 
-        resultado = consultar_serpapi("Medellin", "Colombia")
+        resultado = consultar_serpapi(ESPEC)
 
         self.assertEqual(get_mock.call_count, 2)
         self.assertEqual([p["name"] for p in resultado["properties"]], ["A"])
@@ -531,7 +579,7 @@ class TestConsultarSerpapiRateLimit(unittest.TestCase):
         get_mock.return_value = self._respuesta_429()
 
         with self.assertRaises(SerpApiError):
-            consultar_serpapi("Medellin", "Colombia")
+            consultar_serpapi(ESPEC)
 
 
 if __name__ == '__main__':

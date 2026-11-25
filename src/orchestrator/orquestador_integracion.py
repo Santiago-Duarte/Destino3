@@ -11,7 +11,6 @@ from src.repositories.analisis_ia_repository import AnalisisIARepository
 from src.repositories.hospedaje_repository import HospedajeRepository
 from src.services.buscador_serpapi import buscar_hospedajes
 from src.services.evaluador_ia import EvaluadorIA, preseleccionar_candidatos
-from src.services.interpretador_ia import InterpretadorIA
 
 logger = logging.getLogger(__name__)
 
@@ -80,25 +79,20 @@ class OrquestadorIntegracion:
 
     def __init__(
             self,
-            buscar_hospedajes: Callable[[str, str, float | None], list[Hospedaje]] = buscar_hospedajes,
-            interpretar: Callable[[str], EspecificacionBusqueda] | None = None,
+            buscar_hospedajes: Callable[
+                [EspecificacionBusqueda], list[Hospedaje]
+            ] = buscar_hospedajes,
             hospedajes_repo: HospedajeRepository | None = None,
             analisis_repo: AnalisisIARepository | None = None,
             evaluador: EvaluadorIA | None = None,
     ) -> None:
         self._buscar_hospedajes = buscar_hospedajes
-        self._interpretar = interpretar
         self._hospedajes_repo = hospedajes_repo
         self._analisis_repo = analisis_repo
         self._evaluador = evaluador
 
-    def buscar_desde_frase(self, frase: str) -> ResultadoBusqueda:
-        interpretar = self._interpretar or InterpretadorIA().interpretar
-        espec = interpretar(frase)
-
-        hospedajes = self._buscar_hospedajes(
-            espec.ciudad, espec.pais, espec.presupuesto_max_noche
-        )
+    def buscar(self, espec: EspecificacionBusqueda) -> ResultadoBusqueda:
+        hospedajes = self._buscar_hospedajes(espec)
         if not hospedajes:
             return ResultadoBusqueda(espec, [])
 
