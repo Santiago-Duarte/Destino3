@@ -102,6 +102,10 @@ def _prompt_puntuacion(resumen_candidatos: list[dict], espec: EspecificacionBusq
         else "Sin límite declarado"
     )
     preferencias = espec.preferencias.strip() or "Ninguna especificada"
+    if espec.mascotas is None:
+        mascotas = "no especificado"
+    else:
+        mascotas = "sí" if espec.mascotas else "no"
     return f"""
                 Eres un asistente experto en viajes. Puntúa los hoteles de este JSON según lo que pide esta persona:
                 {_json(resumen_candidatos)}
@@ -109,6 +113,7 @@ def _prompt_puntuacion(resumen_candidatos: list[dict], espec: EspecificacionBusq
                 Especificaciones del usuario:
                 - Destino: {espec.ciudad}, {espec.pais}
                 - Presupuesto máximo: {presupuesto}
+                - Viaja con mascotas: {mascotas}
                 - Preferencias: {preferencias}
 
                 Instrucciones:

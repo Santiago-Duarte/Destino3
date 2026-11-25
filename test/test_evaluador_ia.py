@@ -273,6 +273,25 @@ class TestPuntuar(unittest.TestCase):
         self.assertIn("USD $100 por noche", prompt)
         self.assertIn("cerca del metro", prompt)
         self.assertIn("Metro a 200 m", prompt)
+        self.assertIn("Viaja con mascotas: no especificado", prompt)
+
+    @patch("time.sleep")
+    @patch("src.services.gemini.settings.GEMINI_API_KEY", "clave-prueba")
+    @patch("src.services.gemini.genai.Client")
+    def test_el_prompt_distingue_mascotas_desconocidas_de_negadas(self, cliente_mock, _sleep):
+        generar = cliente_mock.return_value.models.generate_content
+        generar.return_value = unittest.mock.Mock(
+            text=leer_fixture("gemini_puntuacion_valida.json")
+        )
+
+        EvaluadorIA().puntuar(candidatos(), {}, self._espec().model_copy(
+            update={"mascotas": True}
+        ))
+
+        self.assertIn(
+            "Viaja con mascotas: sí",
+            generar.call_args.kwargs["contents"],
+        )
 
     @patch("time.sleep")
     @patch("src.services.gemini.settings.GEMINI_MAX_REINTENTOS", 2)
