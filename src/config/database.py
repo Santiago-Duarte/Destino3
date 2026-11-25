@@ -18,7 +18,7 @@ _VARIABLES_POR_ENTORNO: dict[str, tuple[str, str, str]] = {
 
 
 def obtener_conexion() -> ConexionPostgres | None:
-    entorno = os.getenv("ENVIRONMENT")
+    entorno = os.getenv("ENVIRONMENT", "")
     try:
         variable_nombre_bd, variable_usuario, variable_clave = _VARIABLES_POR_ENTORNO[entorno]
     except KeyError as error:
