@@ -10,8 +10,8 @@ from src.exceptions import SerpApiError
 from src.repositories.hospedaje_repository import HospedajeRepository
 from src.services.buscador_serpapi import (
     buscar_hospedajes,
-    consultar_serpapi,
     construir_url_reserva,
+    consultar_serpapi,
 )
 from test.db_test_case import BaseDBTestCase
 
@@ -118,6 +118,63 @@ class TestBuscarHospedajes(unittest.TestCase):
             self.assertEqual(hospedaje.destino_id, 42)
 
     @patch("src.services.buscador_serpapi.consultar_serpapi")
+    def test_link_sin_esquema_se_normaliza(self, raw_mock):
+        respuesta = respuesta_mock()
+        respuesta["properties"][1]["link"] = "hotelb.com/reservas"
+        raw_mock.return_value = respuesta
+
+        hospedajes = buscar_hospedajes("Medellin", "Colombia")
+
+        self.assertEqual(hospedajes[1].url_reserva, "https://hotelb.com/reservas")
+
+    @patch("src.services.buscador_serpapi.consultar_serpapi")
+    def test_calificacion_ausente_queda_none_y_tipo_desconocido_es_otro(self, raw_mock):
+        respuesta = respuesta_mock()
+        respuesta["properties"][0].pop("overall_rating")
+        respuesta["properties"][0]["type"] = "vacation_rental"
+        raw_mock.return_value = respuesta
+
+        hospedajes = buscar_hospedajes("Medellin", "Colombia")
+
+        self.assertIsNone(hospedajes[0].calificacion)
+        self.assertEqual(hospedajes[0].tipo, "otro")
+        self.assertEqual(hospedajes[1].tipo, "hotel")
+
+    @patch("src.services.buscador_serpapi.consultar_serpapi")
+    def test_descripcion_larga_no_se_recorta_a_doscientos(self, raw_mock):
+        respuesta = respuesta_mock()
+        respuesta["properties"][0]["description"] = "x" * 250
+        raw_mock.return_value = respuesta
+
+        hospedajes = buscar_hospedajes("Medellin", "Colombia")
+
+        self.assertEqual(len(hospedajes[0].descripcion), 250)
+        self.assertIsNone(hospedajes[0].direccion)
+
+    @patch("src.services.buscador_serpapi.consultar_serpapi")
+    def test_direccion_y_descripcion_se_mapean_por_separado(self, raw_mock):
+        respuesta = respuesta_mock()
+        respuesta["properties"][0]["description"] = "Hotel con piscina"
+        respuesta["properties"][0]["address"] = "Calle 10 #20-30"
+        raw_mock.return_value = respuesta
+
+        hospedajes = buscar_hospedajes("Medellin", "Colombia")
+
+        self.assertEqual(hospedajes[0].descripcion, "Hotel con piscina")
+        self.assertEqual(hospedajes[0].direccion, "Calle 10 #20-30")
+
+    @patch("src.services.buscador_serpapi.consultar_serpapi")
+    def test_sin_presupuesto_conserva_hotel_sin_tarifa(self, raw_mock):
+        respuesta = respuesta_mock()
+        respuesta["properties"][0].pop("rate_per_night")
+        raw_mock.return_value = respuesta
+
+        hospedajes = buscar_hospedajes("Medellin", "Colombia")
+
+        self.assertEqual(len(hospedajes), 2)
+        self.assertIsNone(hospedajes[0].precio_noche)
+
+    @patch("src.services.buscador_serpapi.consultar_serpapi")
     def test_destino_se_resuelve_una_sola_vez_con_el_destino_correcto(self, raw_mock):
         raw_mock.return_value = respuesta_mock()
 
@@ -127,29 +184,29 @@ class TestBuscarHospedajes(unittest.TestCase):
         buscador_serpapi.DestinoRepository.obtener_o_crear.assert_called_once()
 
     @patch("src.services.buscador_serpapi.consultar_serpapi")
-    def test_si_no_se_puede_guardar_el_destino_devuelve_lista_vacia(self, raw_mock):
+    def test_si_no_se_puede_guardar_el_destino_propaga_el_error(self, raw_mock):
         raw_mock.return_value = respuesta_mock()
         from src.services import buscador_serpapi
         buscador_serpapi.DestinoRepository.obtener_o_crear.side_effect = ValueError("ciudad vacía")
 
-        hospedajes = buscar_hospedajes("Medellin", "Colombia")
-
-        self.assertEqual(hospedajes, [])
+        with self.assertRaises(ValueError):
+            buscar_hospedajes("Medellin", "Colombia")
 
     @patch("src.services.buscador_serpapi.consultar_serpapi")
-    def test_si_consultar_serpapi_falla_devuelve_lista_vacia(self, raw_mock):
+    def test_si_consultar_serpapi_falla_propaga_el_error(self, raw_mock):
         raw_mock.side_effect = SerpApiError("consulta", "error de red")
 
-        resultado = buscar_hospedajes("Medellin", "Colombia")
-
-        self.assertEqual(resultado, [])
+        with self.assertRaises(SerpApiError):
+            buscar_hospedajes("Medellin", "Colombia")
         raw_mock.assert_called_once_with("Medellin", "Colombia", None)
 
 
 class TestConsultarSerpapi(unittest.TestCase):
 
+    @patch("src.services.buscador_serpapi.time.sleep")
+    @patch("src.services.buscador_serpapi.settings.SERPAPI_MAX_REINTENTOS", 0)
     @patch("src.services.buscador_serpapi.requests.get")
-    def test_error_de_red_lanza_serpapi_error(self, get_mock):
+    def test_error_de_red_lanza_serpapi_error(self, get_mock, _sleep):
         get_mock.side_effect = requests.exceptions.ConnectionError("sin red")
 
         with self.assertRaises(SerpApiError):
@@ -387,6 +444,7 @@ class TestConsultarSerpapiRateLimit(unittest.TestCase):
     @patch("src.services.buscador_serpapi.time.sleep")
     @patch("src.services.buscador_serpapi.settings.SERPAPI_MAX_REINTENTOS", 1)
     @patch("src.services.buscador_serpapi.settings.SERPAPI_RATE_LIMIT_RPS", 0)
+    @patch("src.services.buscador_serpapi.settings.SERPAPI_MAX_PAGES", 5)
     @patch("src.services.buscador_serpapi.requests.get")
     def test_429_agotado_devuelve_resultados_acumulados(self, get_mock, sleep_mock):
         get_mock.side_effect = [
@@ -427,6 +485,53 @@ class TestConsultarSerpapiRateLimit(unittest.TestCase):
 
         self.assertEqual(len(tiempos), 2)
         self.assertGreaterEqual(tiempos[1] - tiempos[0], 0.04)
+
+    @patch("src.services.buscador_serpapi.time.sleep")
+    @patch("src.services.buscador_serpapi.settings.SERPAPI_BACKOFF_BASE", 0.25)
+    @patch("src.services.buscador_serpapi.settings.SERPAPI_MAX_REINTENTOS", 2)
+    @patch("src.services.buscador_serpapi.settings.SERPAPI_RATE_LIMIT_RPS", 0)
+    @patch("src.services.buscador_serpapi.requests.get")
+    def test_5xx_se_reintenta_y_recupera(self, get_mock, sleep_mock):
+        respuesta_503 = unittest.mock.Mock()
+        respuesta_503.status_code = 503
+        respuesta_503.headers = {}
+        respuesta_503.raise_for_status.side_effect = requests.exceptions.HTTPError(
+            "servicio no disponible", response=respuesta_503
+        )
+        get_mock.side_effect = [respuesta_503, self._respuesta_ok([{"name": "A"}])]
+
+        resultado = consultar_serpapi("Medellin", "Colombia")
+
+        self.assertEqual(get_mock.call_count, 2)
+        self.assertEqual([p["name"] for p in resultado["properties"]], ["A"])
+        self.assertEqual(sleep_mock.call_args_list[0].args, (0.25,))
+
+    @patch("src.services.buscador_serpapi.time.sleep")
+    @patch("src.services.buscador_serpapi.settings.SERPAPI_BACKOFF_BASE", 0.25)
+    @patch("src.services.buscador_serpapi.settings.SERPAPI_MAX_REINTENTOS", 2)
+    @patch("src.services.buscador_serpapi.settings.SERPAPI_RATE_LIMIT_RPS", 0)
+    @patch("src.services.buscador_serpapi.requests.get")
+    def test_timeout_se_reintenta_y_recupera(self, get_mock, sleep_mock):
+        get_mock.side_effect = [
+            requests.exceptions.Timeout("timeout"),
+            self._respuesta_ok([{"name": "A"}]),
+        ]
+
+        resultado = consultar_serpapi("Medellin", "Colombia")
+
+        self.assertEqual(get_mock.call_count, 2)
+        self.assertEqual([p["name"] for p in resultado["properties"]], ["A"])
+        self.assertEqual(sleep_mock.call_args_list[0].args, (0.25,))
+
+    @patch("src.services.buscador_serpapi.time.sleep")
+    @patch("src.services.buscador_serpapi.settings.SERPAPI_MAX_REINTENTOS", 0)
+    @patch("src.services.buscador_serpapi.settings.SERPAPI_RATE_LIMIT_RPS", 0)
+    @patch("src.services.buscador_serpapi.requests.get")
+    def test_429_en_la_primera_pagina_lanza_error(self, get_mock, _sleep):
+        get_mock.return_value = self._respuesta_429()
+
+        with self.assertRaises(SerpApiError):
+            consultar_serpapi("Medellin", "Colombia")
 
 
 if __name__ == '__main__':
