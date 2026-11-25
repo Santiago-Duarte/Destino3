@@ -1,8 +1,10 @@
 import json
 import unittest
+from datetime import date
 from unittest.mock import Mock, patch
 
 from src.models.busqueda import EspecificacionBusqueda
+from src.models.interpretacion import InterpretacionFrase
 from src.services.interpretador_ia import InterpretadorIA
 
 FRASE = "quiero hoteles en Medellin, Colombia hasta 100 USD cerca del metro"
@@ -12,6 +14,11 @@ def respuesta_con(**campos) -> Mock:
     datos = {
         "ciudad": "Medellin",
         "pais": "Colombia",
+        "fecha_entrada": "2026-12-04",
+        "fecha_salida": "2026-12-06",
+        "adultos": 2,
+        "ninos": 1,
+        "mascotas": True,
         "presupuesto_max_noche": 100,
         "preferencias": "cerca del metro",
     }
@@ -42,7 +49,57 @@ class TestInterpretadorIA(unittest.TestCase):
 
         llamada = cliente_mock.return_value.models.generate_content.call_args
         self.assertIn(FRASE, llamada.kwargs["contents"])
-        self.assertIs(llamada.kwargs["config"].response_schema, EspecificacionBusqueda)
+        self.assertIs(llamada.kwargs["config"].response_schema, InterpretacionFrase)
+
+    def test_extrae_fechas_y_ocupacion(self, cliente_mock, _sleep):
+        espec = self._interpretar(cliente_mock, respuesta_con())
+
+        self.assertEqual(espec.fecha_entrada, date(2026, 12, 4))
+        self.assertEqual(espec.fecha_salida, date(2026, 12, 6))
+        self.assertEqual(espec.adultos, 2)
+        self.assertEqual(espec.ninos, 1)
+        self.assertTrue(espec.mascotas)
+        self.assertEqual(espec.noches(), 2)
+
+    def test_el_prompt_incluye_la_fecha_de_hoy_para_inferir_el_ano(self, cliente_mock, _sleep):
+        self._interpretar(cliente_mock, respuesta_con())
+
+        llamada = cliente_mock.return_value.models.generate_content.call_args
+        self.assertIn(date.today().isoformat(), llamada.kwargs["contents"])
+
+    def test_mascotas_false_se_conserva(self, cliente_mock, _sleep):
+        espec = self._interpretar(cliente_mock, respuesta_con(mascotas=False))
+
+        self.assertFalse(espec.mascotas)
+
+    def test_datos_ausentes_quedan_en_none(self, cliente_mock, _sleep):
+        espec = self._interpretar(cliente_mock, respuesta_con(
+            fecha_entrada=None,
+            fecha_salida=None,
+            adultos=None,
+            ninos=None,
+            mascotas=None,
+        ))
+
+        self.assertIsNone(espec.fecha_entrada)
+        self.assertIsNone(espec.fecha_salida)
+        self.assertIsNone(espec.adultos)
+        self.assertIsNone(espec.ninos)
+        self.assertIsNone(espec.mascotas)
+
+    def test_fecha_invalida_queda_en_none(self, cliente_mock, _sleep):
+        espec = self._interpretar(cliente_mock, respuesta_con(
+            fecha_entrada="04/12/2026",
+        ))
+
+        self.assertIsNone(espec.fecha_entrada)
+        self.assertEqual(espec.fecha_salida, date(2026, 12, 6))
+
+    def test_ocupacion_invalida_queda_en_none(self, cliente_mock, _sleep):
+        espec = self._interpretar(cliente_mock, respuesta_con(adultos=0, ninos=-1))
+
+        self.assertIsNone(espec.adultos)
+        self.assertIsNone(espec.ninos)
 
     def test_sin_ciudad_falla(self, cliente_mock, _sleep):
         with self.assertRaises(ValueError):
