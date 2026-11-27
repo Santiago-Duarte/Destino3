@@ -8,14 +8,16 @@ python -m src.main "quiero hoteles en Medellin, Colombia hasta 100 USD cerca del
 
 ## Qué hace
 
-1. **Interpreta la frase con Gemini**: extrae ciudad, país, presupuesto máximo por noche y preferencias.
-2. **Consulta Google Hotels vía SerpAPI**: usa una estancia provisoria de 2 noches, 7 días después de hoy, moneda USD y español.
-3. **Persiste en PostgreSQL**: crea o reutiliza el destino y hace upsert de los hoteles por `google_place_id`.
-4. **Preselecciona**: filtra por presupuesto, ordena por calificación y precio, y deja hasta 10 candidatos para la IA.
-5. **Analiza y puntúa con Gemini**:
+1. **Interpreta la frase con Gemini**: extrae ciudad, país, fechas, ocupación, presupuesto máximo por noche, preferencias, distancia máxima y, si se pide, un punto de referencia específico (ej. "cerca del metro", "cerca del aeropuerto", "cerca de la playa El Rodadero").
+2. **Consulta Google Hotels vía SerpAPI**: usa las fechas y la ocupación reales, moneda USD y español.
+3. **Persiste en PostgreSQL**: crea o reutiliza el destino y hace upsert de los hoteles por `google_place_id`, incluidas sus coordenadas GPS.
+4. **Calcula distancias verificables**: geocodifica el punto de referencia pedido (o el centro de la ciudad si no se especifica) con Nominatim (OSM), calcula la distancia en línea recta (haversine) y estima tiempos en auto, transporte público y a pie. Si la frase pide un radio ("a menos de 1 km"), descarta los hoteles fuera de él.
+5. **Preselecciona**: filtra por presupuesto, ordena por calificación y precio, y deja hasta 10 candidatos para la IA.
+6. **Analiza y puntúa con Gemini**:
    - análisis intrínseco del hotel, persistido en `analisis_ia` y reutilizado;
-   - doble score por búsqueda: calidad y cumplimiento de lo pedido.
-6. **Rankea y muestra**: cumplimiento primero, calidad después; top 3 con requisitos cumplidos/faltantes y URL de reserva.
+   - doble score por búsqueda: calidad y cumplimiento de lo pedido;
+   - la distancia y los tiempos ya calculados se pasan como datos objetivos, indicando desde qué punto se midieron.
+7. **Rankea y muestra**: cumplimiento primero, calidad después; top 3 con distancia, tiempos, punto de referencia usado, requisitos cumplidos/faltantes y URL de reserva.
 
 Si la IA falla, la búsqueda continúa sin análisis o sin puntaje. Si fallan SerpAPI, PostgreSQL o la configuración, el CLI muestra el error y sale con código distinto de 0.
 
@@ -75,6 +77,8 @@ Las migraciones actuales:
   datos antiguos.
 - `003_analisis_version.sql`: versiona el análisis y registra su última
   actualización.
+- `004_coordenadas_hospedajes.sql`: añade `latitud`/`longitud` a los hoteles.
+- `005_coordenadas_destinos.sql`: añade `latitud`/`longitud` a los destinos.
 
 ## Uso
 
@@ -110,6 +114,7 @@ Presupuesto: sin límite
 - Las fechas se escriben como `dd/mm` o `dd/mm/aaaa`; el año se infiere si falta.
 - No se aceptan fechas pasadas, salidas anteriores a la entrada, estancias de más de 30 noches ni entradas a más de un año.
 - Solo se pide confirmación cuando hubo que completar datos.
+- Si la frase pide una distancia máxima ("a menos de 1 km del centro"), se aplica como filtro duro y se muestra en el resumen.
 
 Si pulsas Enter sin escribir la frase, vuelve a preguntar. Con `--help` puedes ver
 la ayuda del comando:
@@ -128,12 +133,18 @@ Preferencias: cerca del metro
 TOP 3 de 7 candidatos
 
 1. Hotel Ejemplo — USD $80/noche — calificación 4.5
+   0.85 km de estación metro Poblado | auto 2 min | bus 3 min | a pie 10 min
    Cumplimiento 9/10 | calidad 8/10
    Cumple: presupuesto hasta 100 USD, cerca del metro
    Falta: —
    ...
    Reserva: https://www.google.com/travel/hotels/entity/...
 ```
+
+La distancia es la línea recta entre el punto de referencia (centro de la ciudad,
+estación de metro, aeropuerto, etc.) y el hotel; los tiempos son estimaciones
+por velocidad media urbana (auto 30 km/h, transporte público 20 km/h, a pie 5 km/h),
+no rutas reales.
 
 ## Pruebas
 
@@ -174,14 +185,17 @@ Los valores de proveedores y comportamiento están en `src/config/settings.py`:
 
 - `SERPAPI_*`: timeout, páginas, resultados, rate limit y reintentos.
 - `GEMINI_*`: modelo, timeout, reintentos, backoff y temperatura.
+- `NOMINATIM_*`: URL, timeout, rate limit y `User-Agent` para la geocodificación.
 - `MAX_CANDIDATOS_IA`, `TOP_RESULTADOS`, `SCORE_CUMPLIMIENTO_MINIMO`.
 - `ANALISIS_VERSION`: súbelo cuando cambie el prompt de análisis para
   invalidar los análisis guardados.
 
 ## Limitaciones actuales
 
-- Las fechas son provisorias: entrada en 7 días y salida 2 días después.
 - El presupuesto se asume en USD.
 - Se consulta una sola página de Google Hotels para acotar costo y latencia.
-- El top es de 3 hoteles y la ocupación usa el default de Google.
+- El top es de 3 hoteles.
+- La distancia se mide desde el punto de referencia geocodificado (centro de la ciudad,
+  estación de metro, aeropuerto, etc.); si Nominatim no resuelve el punto concreto,
+  se usa el centro como fallback.
 - No hay migraciones automáticas ni servicio web; el uso actual es CLI.

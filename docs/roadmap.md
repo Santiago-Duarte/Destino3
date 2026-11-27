@@ -26,7 +26,7 @@ Cada fase ataca una de esas brechas.
 | Fase | Estado |
 |---|---|
 | 1. Fechas y ocupación | Implementada |
-| 2. Distancias verificables | Pendiente |
+| 2. Distancias verificables | Implementada |
 | 3. Precio y filtros duros | Pendiente |
 | 4. Cobertura del catálogo | Pendiente |
 | 5. Calidad e infraestructura | Pendiente |
@@ -57,7 +57,7 @@ resultados de forma directa.
 
 ---
 
-## Fase 2 — Distancias verificables (lo que más se nota)
+## Fase 2 — Distancias verificables (lo que más se nota) — implementada
 
 El mayor salto de calidad: pasar de “la IA cree que está cerca” a “está a 640 m”.
 
