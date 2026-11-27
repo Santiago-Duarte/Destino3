@@ -11,6 +11,7 @@ from src.cli.fechas import (
     validar_estancia,
 )
 from src.models.busqueda import EspecificacionBusqueda
+from src.models.hospedaje import Hospedaje
 
 PREGUNTA_FRASE = (
     '¿Qué hoteles buscas? '
@@ -57,6 +58,21 @@ def formatear_ocupacion(espec: EspecificacionBusqueda) -> str:
     return texto + (", con mascotas" if espec.mascotas else ", sin mascotas")
 
 
+def formatear_distancia(hospedaje: Hospedaje, punto_referencia: str = "centro") -> str | None:
+    """Resumen legible de la distancia y los tiempos de un hospedaje."""
+    if hospedaje.distancia_km is None:
+        return None
+
+    partes = [f"{hospedaje.distancia_km:.2f} km de {punto_referencia}"]
+    if hospedaje.tiempo_auto_min is not None:
+        partes.append(f"auto {hospedaje.tiempo_auto_min} min")
+    if hospedaje.tiempo_transit_min is not None:
+        partes.append(f"bus {hospedaje.tiempo_transit_min} min")
+    if hospedaje.tiempo_walking_min is not None:
+        partes.append(f"a pie {hospedaje.tiempo_walking_min} min")
+    return " | ".join(partes)
+
+
 def resumen(espec: EspecificacionBusqueda) -> str:
     noches = espec.noches()
     fechas = "fechas sin definir"
@@ -72,6 +88,9 @@ def resumen(espec: EspecificacionBusqueda) -> str:
         f"Ocupación: {formatear_ocupacion(espec)}",
         f"Presupuesto: {formatear_presupuesto(espec)}",
     ]
+    if espec.max_distancia_km is not None:
+        punto = espec.punto_referencia_usado or "centro de la ciudad"
+        lineas.append(f"Distancia máxima desde {punto}: {espec.max_distancia_km:g} km")
     if espec.preferencias:
         lineas.append(f"Preferencias: {espec.preferencias}")
     return "\n".join(lineas)

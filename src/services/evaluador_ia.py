@@ -79,6 +79,11 @@ def _resumen_comercial(hospedaje: Hospedaje) -> dict:
     resumen = _resumen_intrinseco(hospedaje)
     resumen["precio_noche"] = _precio(hospedaje)
     resumen["calificacion"] = hospedaje.calificacion
+    if hospedaje.distancia_km is not None:
+        resumen["distancia_km"] = hospedaje.distancia_km
+        resumen["tiempo_auto_min"] = hospedaje.tiempo_auto_min
+        resumen["tiempo_transit_min"] = hospedaje.tiempo_transit_min
+        resumen["tiempo_walking_min"] = hospedaje.tiempo_walking_min
     return resumen
 
 
@@ -106,6 +111,14 @@ def _prompt_puntuacion(resumen_candidatos: list[dict], espec: EspecificacionBusq
         mascotas = "no especificado"
     else:
         mascotas = "sí" if espec.mascotas else "no"
+
+    # Punto de referencia usado para medir distancias
+    punto_ref = espec.punto_referencia_usado or "centro de la ciudad"
+    distancia_maxima = (
+        f"{espec.max_distancia_km:g} km desde {punto_ref}"
+        if espec.max_distancia_km is not None
+        else "Sin límite declarado"
+    )
     return f"""
                 Eres un asistente experto en viajes. Puntúa los hoteles de este JSON según lo que pide esta persona:
                 {_json(resumen_candidatos)}
@@ -114,6 +127,7 @@ def _prompt_puntuacion(resumen_candidatos: list[dict], espec: EspecificacionBusq
                 - Destino: {espec.ciudad}, {espec.pais}
                 - Presupuesto máximo: {presupuesto}
                 - Viaja con mascotas: {mascotas}
+                - Distancia máxima: {distancia_maxima}
                 - Preferencias: {preferencias}
 
                 Instrucciones:
@@ -121,7 +135,8 @@ def _prompt_puntuacion(resumen_candidatos: list[dict], espec: EspecificacionBusq
                 2. `score_calidad`: calidad intrínseca del alojamiento del 1 al 10, sin mirar las preferencias.
                 3. `score_cumplimiento`: qué tan bien cumple las especificaciones del usuario, del 1 al 10 (1=no cumple, 10=las cumple todas).
                 4. `requisitos_cumplidos` y `requisitos_faltantes`: textos cortos tomados de las especificaciones, por ejemplo "presupuesto hasta 100 USD" o "cerca del metro". Un hotel que sí cumple debe aparecer en `requisitos_cumplidos`.
-                5. Cuando el hotel traiga un `analisis` previo, úsalo para responder; no uses información que no esté en los datos de entrada.
+                5. Cuando el hotel traiga un `analisis` previo, úselo para responder; no uses información que no esté en los datos de entrada.
+                6. Las distancias y tiempos (`distancia_km`, `tiempo_auto_min`, `tiempo_transit_min`, `tiempo_walking_min`) se miden en línea recta desde **{punto_ref}**. Úsalos como datos objetivos para evaluar cercanía. No inventes distancias ni ubicaciones.
                 """
 
 

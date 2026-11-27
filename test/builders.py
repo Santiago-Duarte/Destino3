@@ -26,6 +26,8 @@ def espec_completa(
     mascotas: bool | None = False,
     presupuesto_max_noche: float | None = None,
     preferencias: str = "",
+    max_distancia_km: float | None = None,
+    punto_referencia: str | None = None,
 ) -> EspecificacionBusqueda:
     """Especificación con valores por defecto razonables."""
     return EspecificacionBusqueda(
@@ -38,6 +40,8 @@ def espec_completa(
         mascotas=mascotas,
         presupuesto_max_noche=presupuesto_max_noche,
         preferencias=preferencias,
+        max_distancia_km=max_distancia_km,
+        punto_referencia=punto_referencia,
     )
 
 
@@ -56,6 +60,9 @@ def crear_hospedaje(
     direccion: str = "Calle 1",
     url_reserva: str = "https://hotel.example",
     destino_id: int = 1,
+    latitud: float | None = None,
+    longitud: float | None = None,
+    distancia_km: float | None = None,
 ) -> Hospedaje:
     """Hospedaje con valores por defecto."""
     h = Hospedaje(
@@ -66,9 +73,16 @@ def crear_hospedaje(
         direccion=direccion,
         url_reserva=url_reserva,
         destino_id=destino_id,
+        latitud=latitud,
+        longitud=longitud,
     )
     if id is not None:
         h.id = id
+    if distancia_km is not None:
+        h.distancia_km = distancia_km
+        h.tiempo_auto_min = max(1, round(distancia_km * 2))
+        h.tiempo_transit_min = max(1, round(distancia_km * 3))
+        h.tiempo_walking_min = max(1, round(distancia_km * 12))
     return h
 
 
@@ -77,9 +91,22 @@ def crear_destino(
     id: int | None = None,
     ciudad: str = "Medellin",
     pais: str = "Colombia",
+    latitud: float | None = None,
+    longitud: float | None = None,
+    latitud_ref: float | None = None,
+    longitud_ref: float | None = None,
+    punto_referencia_usado: str | None = None,
 ) -> Destino:
     """Destino con valores por defecto."""
-    d = Destino(ciudad=ciudad, pais=pais)
+    d = Destino(
+        ciudad=ciudad,
+        pais=pais,
+        latitud=latitud,
+        longitud=longitud,
+        latitud_ref=latitud_ref,
+        longitud_ref=longitud_ref,
+        punto_referencia_usado=punto_referencia_usado,
+    )
     if id is not None:
         d.id = id
     return d
@@ -100,6 +127,7 @@ def respuesta_mock(
                 "overall_rating": 4.5,
                 "address": "Calle A",
                 "link": "https://hotela.com",
+                "gps_coordinates": {"latitude": 6.2442, "longitude": -75.5812},
             },
             {
                 "name": "Hotel B",
@@ -108,6 +136,7 @@ def respuesta_mock(
                 "overall_rating": 4.2,
                 "address": "Calle B",
                 "link": "https://hotelb.com",
+                "gps_coordinates": {"latitude": 6.2088, "longitude": -75.5671},
             },
         ]
     return {"properties": propiedades, "search_parameters": search_parameters or {}}

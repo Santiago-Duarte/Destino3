@@ -21,6 +21,7 @@ def respuesta_con(**campos) -> Mock:
         "mascotas": True,
         "presupuesto_max_noche": 100,
         "preferencias": "cerca del metro",
+        "max_distancia_km": None,
     }
     datos.update(campos)
     return Mock(text=json.dumps(datos))
@@ -128,5 +129,21 @@ class TestInterpretadorIA(unittest.TestCase):
         self.assertIsNone(espec.presupuesto_max_noche)
         self.assertEqual(espec.preferencias, "")
         self.assertFalse(espec.tiene_requisitos())
+
+    def test_extrae_la_distancia_maxima(self, cliente_mock, _sleep):
+        espec = self._interpretar(cliente_mock, respuesta_con(max_distancia_km=1.5))
+
+        self.assertEqual(espec.max_distancia_km, 1.5)
+        self.assertTrue(espec.tiene_requisitos())
+
+    def test_distancia_maxima_cero_o_negativa_queda_en_none(self, cliente_mock, _sleep):
+        self.assertIsNone(
+            self._interpretar(cliente_mock, respuesta_con(max_distancia_km=0)
+                              ).max_distancia_km
+        )
+        self.assertIsNone(
+            self._interpretar(cliente_mock, respuesta_con(max_distancia_km=-2)
+                              ).max_distancia_km
+        )
 
 

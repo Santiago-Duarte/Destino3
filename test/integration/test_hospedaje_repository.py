@@ -43,6 +43,46 @@ class TestHospedajeRepository(BaseDBTestCase):
         self.assertEqual(hospedajes[0].id, hospedaje_id)
         self.assertEqual(hospedajes[0].google_place_id, google_place_id)
 
+    def test_guardar_y_obtener_coordenadas(self):
+        destino_id = self.crear_destino(ciudad=_ciudad_unica())
+        self.crear_hospedaje(
+            destino_id,
+            latitud=6.2442,
+            longitud=-75.5812,
+        )
+
+        hospedajes = self.hospedaje_repo.obtener_por_destino(destino_id)
+
+        self.assertEqual(hospedajes[0].coordenadas(), (6.2442, -75.5812))
+
+    def test_upsert_sin_coordenadas_conserva_las_existentes(self):
+        destino_id = self.crear_destino(ciudad=_ciudad_unica())
+        google_place_id = f"ChIJ-coords-{uuid.uuid4().hex}"
+        self.crear_hospedaje(
+            destino_id,
+            google_place_id=google_place_id,
+            latitud=6.2442,
+            longitud=-75.5812,
+        )
+
+        self.hospedaje_repo.guardar_lote([
+            Hospedaje(
+                nombre="Hotel sin GPS",
+                tipo="hotel",
+                precio_noche=90,
+                calificacion=4.1,
+                descripcion="Sin coordenadas nuevas",
+                direccion="Calle 2",
+                url_reserva="https://www.hotel2.com",
+                destino_id=destino_id,
+                google_place_id=google_place_id,
+            )
+        ])
+
+        persistidos = self.hospedaje_repo.obtener_por_destino(destino_id)
+        self.assertEqual(len(persistidos), 1)
+        self.assertEqual(persistidos[0].coordenadas(), (6.2442, -75.5812))
+
     def test_reutiliza_el_hospedaje_por_token_y_refresca_sus_datos(self):
         destino_id = self.crear_destino(ciudad=_ciudad_unica())
         google_place_id = f"ChIJ-refresco-{uuid.uuid4().hex}"

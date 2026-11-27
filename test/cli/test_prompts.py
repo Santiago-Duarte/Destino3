@@ -7,11 +7,13 @@ from unittest.mock import patch
 from src.cli.prompts import (
     completar_especificacion,
     confirmar,
+    formatear_distancia,
     formatear_ocupacion,
     pedir_frase,
     resumen,
 )
 from src.models.busqueda import EspecificacionBusqueda
+from src.models.hospedaje import Hospedaje
 
 HOY = date(2026, 11, 25)  # miércoles
 
@@ -274,6 +276,61 @@ class TestResumen(unittest.TestCase):
         self.assertIn(
             "mascotas no especificadas",
             formatear_ocupacion(espec(mascotas=None)),
+        )
+
+    def test_incluye_la_distancia_maxima_cuando_se_pide(self):
+        texto = resumen(espec(max_distancia_km=1.5))
+
+        self.assertIn("Distancia máxima desde", texto)
+        self.assertIn("1.5 km", texto)
+
+    def test_sin_distancia_maxima_no_la_menciona(self):
+        texto = resumen(espec())
+
+        self.assertNotIn("Distancia máxima", texto)
+
+
+class TestFormatearDistancia(unittest.TestCase):
+
+    @staticmethod
+    def _hospedaje(**campos) -> Hospedaje:
+        hospedaje = Hospedaje(
+            nombre="Hotel",
+            tipo="hotel",
+            precio_noche=100,
+            calificacion=4.5,
+            direccion="Calle 1",
+            url_reserva="https://hotel.example",
+            destino_id=1,
+        )
+        for campo, valor in campos.items():
+            setattr(hospedaje, campo, valor)
+        return hospedaje
+
+    def test_sin_distancia_devuelve_none(self):
+        self.assertIsNone(formatear_distancia(self._hospedaje()))
+
+    def test_incluye_distancia_y_todos_los_tiempos(self):
+        hospedaje = self._hospedaje(
+            distancia_km=1.25,
+            tiempo_auto_min=3,
+            tiempo_transit_min=4,
+            tiempo_walking_min=15,
+        )
+
+        texto = formatear_distancia(hospedaje, "centro")
+
+        self.assertEqual(
+            texto,
+            "1.25 km de centro | auto 3 min | bus 4 min | a pie 15 min",
+        )
+
+    def test_omite_los_tiempos_no_disponibles(self):
+        hospedaje = self._hospedaje(distancia_km=0.5, tiempo_auto_min=1)
+
+        self.assertEqual(
+            formatear_distancia(hospedaje, "centro"),
+            "0.50 km de centro | auto 1 min",
         )
 
 

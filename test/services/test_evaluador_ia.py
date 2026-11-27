@@ -330,6 +330,58 @@ class TestPuntuar(unittest.TestCase):
         self.assertEqual(len(lote), 1)
         self.assertEqual(generar.call_count, 2)
 
+    @patch("time.sleep")
+    @patch("src.services.gemini.settings.GEMINI_API_KEY", "clave-prueba")
+    @patch("src.services.gemini.genai.Client")
+    def test_el_prompt_incluye_distancias_y_tiempos_cuando_existen(self, cliente_mock, _sleep):
+        generar = cliente_mock.return_value.models.generate_content
+        generar.return_value = unittest.mock.Mock(
+            text=leer_fixture("gemini_puntuacion_valida.json")
+        )
+        hoteles = candidatos()
+        hoteles[0].distancia_km = 0.8
+        hoteles[0].tiempo_auto_min = 2
+        hoteles[0].tiempo_transit_min = 3
+        hoteles[0].tiempo_walking_min = 10
+
+        EvaluadorIA().puntuar(hoteles, {}, self._espec())
+
+        prompt = generar.call_args.kwargs["contents"]
+        self.assertIn('"distancia_km":0.8', prompt)
+        self.assertIn('"tiempo_auto_min":2', prompt)
+        self.assertIn('"tiempo_transit_min":3', prompt)
+        self.assertIn('"tiempo_walking_min":10', prompt)
+        self.assertIn("No inventes distancias ni ubicaciones", prompt)
+
+    @patch("time.sleep")
+    @patch("src.services.gemini.settings.GEMINI_API_KEY", "clave-prueba")
+    @patch("src.services.gemini.genai.Client")
+    def test_sin_distancia_el_prompt_no_incluye_el_campo(self, cliente_mock, _sleep):
+        generar = cliente_mock.return_value.models.generate_content
+        generar.return_value = unittest.mock.Mock(
+            text=leer_fixture("gemini_puntuacion_valida.json")
+        )
+
+        EvaluadorIA().puntuar(candidatos(), {}, self._espec())
+
+        prompt = generar.call_args.kwargs["contents"]
+        self.assertNotIn('"distancia_km"', prompt)
+
+    @patch("time.sleep")
+    @patch("src.services.gemini.settings.GEMINI_API_KEY", "clave-prueba")
+    @patch("src.services.gemini.genai.Client")
+    def test_el_prompt_menciona_la_distancia_maxima_si_se_pide(self, cliente_mock, _sleep):
+        generar = cliente_mock.return_value.models.generate_content
+        generar.return_value = unittest.mock.Mock(
+            text=leer_fixture("gemini_puntuacion_valida.json")
+        )
+        espec = self._espec().model_copy(update={"max_distancia_km": 1.5})
+
+        EvaluadorIA().puntuar(candidatos(), {}, espec)
+
+        prompt = generar.call_args.kwargs["contents"]
+        self.assertIn("Distancia máxima: 1.5 km desde centro de la ciudad", prompt)
+
     def test_hospedaje_sin_id_lanza_value_error_en_analizar(self):
         hospedaje = Hospedaje(nombre="H", tipo="hotel", precio_noche=100, calificacion=4,
                              direccion="C", url_reserva="https://x", destino_id=1)

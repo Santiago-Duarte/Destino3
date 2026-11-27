@@ -17,3 +17,5 @@ class InterpretacionFrase(BaseModel):
     mascotas: bool | None = None
     presupuesto_max_noche: float | None = None
     preferencias: str = ""
+    max_distancia_km: float | None = None
+    punto_referencia: str | None = None

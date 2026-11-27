@@ -4,6 +4,7 @@ import logging
 from src.cli.prompts import (
     completar_especificacion,
     confirmar,
+    formatear_distancia,
     formatear_ocupacion,
     formatear_presupuesto,
     pedir_frase,
@@ -48,6 +49,9 @@ def _imprimir(resultado) -> None:
     espec = resultado.especificacion
     print(f"\nBúsqueda: {_nombre_destino(espec)} | {_fechas(espec)} | {formatear_ocupacion(espec)}")
     print(f"Presupuesto: {formatear_presupuesto(espec)}")
+    if espec.max_distancia_km is not None:
+        punto = espec.punto_referencia_usado or "centro de la ciudad"
+        print(f"Distancia máxima desde {punto}: {espec.max_distancia_km:g} km")
     print(f"Preferencias: {espec.preferencias or 'ninguna'}")
 
     if not resultado.candidatos:
@@ -66,10 +70,14 @@ def _imprimir(resultado) -> None:
         print("por cumplimiento con sus requisitos pendientes:\n")
         lista = resultado.candidatos
 
+    punto_referencia = espec.punto_referencia_usado or "centro"
     for posicion, candidato in enumerate(lista, start=1):
         hospedaje = candidato.hospedaje
         print(f"{posicion}. {hospedaje.nombre} — {_precio_noche(hospedaje)}"
               f" — calificación {_calificacion(hospedaje)}")
+        distancia = formatear_distancia(hospedaje, punto_referencia)
+        if distancia:
+            print(f"   {distancia}")
         if candidato.score_cumplimiento is None:
             print("   Sin puntaje (la IA no respondió para este hotel)")
         else:

@@ -52,8 +52,21 @@ class BaseDBTestCase(unittest.TestCase):
             self._parche_conexion.stop()
             self.conexion_externa.close()
 
-    def crear_destino(self, ciudad="Medellin", pais="Colombia"):
-        return self.destino_repo.guardar(Destino(ciudad=ciudad, pais=pais))
+    def crear_destino(
+            self,
+            ciudad="Medellin",
+            pais="Colombia",
+            latitud=None,
+            longitud=None,
+    ):
+        return self.destino_repo.guardar(
+            Destino(
+                ciudad=ciudad,
+                pais=pais,
+                latitud=latitud,
+                longitud=longitud,
+            )
+        )
 
     def crear_hospedaje(self, destino_id, **campos):
         valores = dict(

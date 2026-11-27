@@ -30,6 +30,66 @@ class TestDestinoRepository(BaseDBTestCase):
         self.assertEqual(destino.ciudad, ciudad)
         self.assertEqual(destino.pais, pais)
 
+    def test_guardar_y_obtener_coordenadas(self):
+        ciudad, pais = self._datos_destino()
+        destino_id = self.crear_destino(
+            ciudad=ciudad,
+            pais=pais,
+            latitud=6.2442,
+            longitud=-75.5812,
+        )
+
+        destino = self._destinos_creados([destino_id])[0]
+
+        self.assertEqual(destino.coordenadas(), (6.2442, -75.5812))
+
+    def test_obtener_por_ciudad_pais(self):
+        ciudad, pais = self._datos_destino("Medellin", "Colombia")
+        destino_id = self.crear_destino(
+            ciudad=ciudad,
+            pais=pais,
+            latitud=6.2442,
+            longitud=-75.5812,
+        )
+
+        destino = self.destino_repo.obtener_por_ciudad_pais(ciudad, pais)
+
+        self.assertIsNotNone(destino)
+        self.assertEqual(destino.id, destino_id)
+        self.assertEqual(destino.coordenadas(), (6.2442, -75.5812))
+
+    def test_obtener_por_ciudad_pais_inexistente_devuelve_none(self):
+        self.assertIsNone(
+            self.destino_repo.obtener_por_ciudad_pais("NoExiste", "Nada")
+        )
+
+    def test_obtener_por_ciudad_pais_vacia_devuelve_none(self):
+        self.assertIsNone(self.destino_repo.obtener_por_ciudad_pais("", "Colombia"))
+        self.assertIsNone(self.destino_repo.obtener_por_ciudad_pais("Medellin", ""))
+
+    def test_actualizar_coordenadas(self):
+        ciudad, pais = self._datos_destino()
+        destino_id = self.crear_destino(ciudad=ciudad, pais=pais)
+
+        self.destino_repo.actualizar_coordenadas(destino_id, 6.2442, -75.5812)
+
+        destino = self._destinos_creados([destino_id])[0]
+        self.assertEqual(destino.coordenadas(), (6.2442, -75.5812))
+
+    def test_obtener_o_crear_completa_coordenadas_faltantes(self):
+        ciudad, pais = self._datos_destino()
+        destino_id = self.crear_destino(ciudad=ciudad, pais=pais)
+
+        self.destino_repo.obtener_o_crear(Destino(
+            ciudad=ciudad,
+            pais=pais,
+            latitud=6.2442,
+            longitud=-75.5812,
+        ))
+
+        destino = self._destinos_creados([destino_id])[0]
+        self.assertEqual(destino.coordenadas(), (6.2442, -75.5812))
+
     def test_obtener_destinos_sin_registros(self):
         self.assertEqual(self.destino_repo.obtener_todos(), [])
 

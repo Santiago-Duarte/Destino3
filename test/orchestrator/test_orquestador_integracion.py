@@ -10,11 +10,16 @@ from src.models.analisis_ia import (
     PuntuacionIAOutput,
 )
 from src.models.busqueda import EspecificacionBusqueda
+from src.models.destino import Destino
 from src.models.hospedaje import Hospedaje
 from src.orchestrator.orquestador_integracion import OrquestadorIntegracion
 
 
-def crear_hospedaje(nombre: str) -> Hospedaje:
+def crear_hospedaje(
+        nombre: str,
+        latitud: float | None = 6.2500,
+        longitud: float | None = -75.5800,
+) -> Hospedaje:
     return Hospedaje(
         nombre=nombre,
         tipo="hotel",
@@ -23,6 +28,8 @@ def crear_hospedaje(nombre: str) -> Hospedaje:
         direccion="Calle 1",
         url_reserva="https://hotel.example",
         destino_id=1,
+        latitud=latitud,
+        longitud=longitud,
     )
 
 
@@ -77,11 +84,22 @@ class TestBuscar(unittest.TestCase):
             puntuacion_de(102, calidad=7, cumplimiento=9,
                           cumplidos=("presupuesto hasta 100 USD", "cerca del metro")),
         ])
+        self.destino_repo = Mock()
+        self.destino_repo.obtener_por_ciudad_pais.return_value = Destino(
+            id=1,
+            ciudad="Medellin",
+            pais="Colombia",
+            latitud=6.2442,
+            longitud=-75.5812,
+        )
+        self.geocodificar = Mock(return_value=(6.2442, -75.5812))
         self.orquestador = OrquestadorIntegracion(
             buscar_hospedajes=self.buscar,
             hospedajes_repo=self.hospedajes_repo,
             analisis_repo=self.analisis_repo,
             evaluador=self.evaluador,
+            destino_repo=self.destino_repo,
+            geocodificar=self.geocodificar,
         )
 
     def test_busca_persiste_analiza_puntua_y_ordena(self):
@@ -259,5 +277,147 @@ class TestBuscar(unittest.TestCase):
             all(candidato.score_cumplimiento is None for candidato in resultado.candidatos)
         )
         self.assertEqual(resultado.mejores(), [])
+
+
+class TestDistancias(unittest.TestCase):
+
+    def setUp(self):
+        self.espec = EspecificacionBusqueda(
+            ciudad="Medellin",
+            pais="Colombia",
+            presupuesto_max_noche=100,
+        )
+        self.hotel_cerca = crear_hospedaje(
+            "Hotel cerca", latitud=6.2442, longitud=-75.5812
+        )
+        self.hotel_lejos = crear_hospedaje(
+            "Hotel lejos", latitud=6.3500, longitud=-75.5812
+        )
+        self.buscar = Mock(return_value=[self.hotel_cerca, self.hotel_lejos])
+        self.hospedajes_repo = Mock()
+        self.hospedajes_repo.guardar_lote.return_value = [101, 102]
+        self.analisis_repo = Mock()
+        self.analisis_repo.obtener_por_hospedajes.return_value = {}
+        self.analisis_repo.guardar_lote.side_effect = (
+            lambda analisis: list(range(201, 201 + len(analisis)))
+        )
+        self.evaluador = Mock()
+        self.evaluador.analizar.return_value = LoteAnalisisIA(analisis=[
+            analisis_de(101), analisis_de(102),
+        ])
+        self.evaluador.puntuar.return_value = LotePuntuacionesIA(puntuaciones=[
+            puntuacion_de(101, calidad=8, cumplimiento=8),
+            puntuacion_de(102, calidad=7, cumplimiento=8),
+        ])
+        self.destino_repo = Mock()
+        self.destino_repo.obtener_por_ciudad_pais.return_value = Destino(
+            id=1,
+            ciudad="Medellin",
+            pais="Colombia",
+            latitud=6.2442,
+            longitud=-75.5812,
+        )
+        self.geocodificar = Mock(return_value=(6.2442, -75.5812))
+
+    def _orquestador(self) -> OrquestadorIntegracion:
+        return OrquestadorIntegracion(
+            buscar_hospedajes=self.buscar,
+            hospedajes_repo=self.hospedajes_repo,
+            analisis_repo=self.analisis_repo,
+            evaluador=self.evaluador,
+            destino_repo=self.destino_repo,
+            geocodificar=self.geocodificar,
+        )
+
+    def test_calcula_distancia_y_tiempos_desde_el_centro(self):
+        resultado = self._orquestador().buscar(self.espec)
+
+        cercano = resultado.candidatos[0].hospedaje
+        self.assertAlmostEqual(cercano.distancia_km, 0.0, places=2)
+        self.assertEqual(cercano.tiempo_auto_min, 0)
+        self.assertEqual(cercano.tiempo_transit_min, 0)
+        self.assertEqual(cercano.tiempo_walking_min, 0)
+
+        lejano = resultado.candidatos[1].hospedaje
+        self.assertIsNotNone(lejano.distancia_km)
+        self.assertGreater(lejano.distancia_km, 10)
+        self.assertGreater(lejano.tiempo_auto_min, 0)
+        self.assertGreater(lejano.tiempo_walking_min, lejano.tiempo_auto_min)
+
+    def test_hotel_sin_coordenadas_queda_sin_distancia(self):
+        self.buscar.return_value = [crear_hospedaje("Sin GPS", latitud=None, longitud=None)]
+        self.hospedajes_repo.guardar_lote.return_value = [101]
+
+        resultado = self._orquestador().buscar(self.espec)
+
+        self.assertIsNone(resultado.candidatos[0].hospedaje.distancia_km)
+
+    def test_filtro_de_distancia_excluye_hoteles_lejanos(self):
+        espec = self.espec.model_copy(update={"max_distancia_km": 1.0})
+
+        resultado = self._orquestador().buscar(espec)
+
+        self.assertEqual(
+            [candidato.hospedaje.nombre for candidato in resultado.candidatos],
+            ["Hotel cerca"],
+        )
+
+    def test_filtro_de_distancia_sin_coordenadas_no_devuelve_nada(self):
+        self.buscar.return_value = [crear_hospedaje("Sin GPS", latitud=None, longitud=None)]
+        self.hospedajes_repo.guardar_lote.return_value = [101]
+        espec = self.espec.model_copy(update={"max_distancia_km": 1.0})
+
+        resultado = self._orquestador().buscar(espec)
+
+        self.assertEqual(resultado.candidatos, [])
+
+    def test_sin_coordenadas_del_destino_continua_sin_distancias(self):
+        self.destino_repo.obtener_por_ciudad_pais.return_value = Destino(
+            id=1, ciudad="Medellin", pais="Colombia"
+        )
+        self.geocodificar.return_value = None
+
+        resultado = self._orquestador().buscar(self.espec)
+
+        self.assertEqual(len(resultado.candidatos), 2)
+        self.assertTrue(
+            all(c.hospedaje.distancia_km is None for c in resultado.candidatos)
+        )
+
+    def test_geocodifica_y_guarda_cuando_el_destino_no_tiene_coordenadas(self):
+        self.destino_repo.obtener_por_ciudad_pais.return_value = Destino(
+            id=1, ciudad="Medellin", pais="Colombia"
+        )
+
+        self._orquestador().buscar(self.espec)
+
+        self.geocodificar.assert_called_once_with("Medellin", "Colombia")
+        self.destino_repo.actualizar_coordenadas.assert_called_once_with(
+            1, 6.2442, -75.5812
+        )
+
+    def test_no_geocodifica_si_el_destino_ya_tiene_coordenadas(self):
+        self._orquestador().buscar(self.espec)
+
+        self.geocodificar.assert_not_called()
+        self.destino_repo.actualizar_coordenadas.assert_not_called()
+
+    def test_destino_inexistente_no_interrumpe_la_busqueda(self):
+        self.destino_repo.obtener_por_ciudad_pais.return_value = None
+
+        resultado = self._orquestador().buscar(self.espec)
+
+        self.assertEqual(len(resultado.candidatos), 2)
+        self.geocodificar.assert_not_called()
+
+    def test_error_del_repositorio_de_destino_no_interrumpe_la_busqueda(self):
+        self.destino_repo.obtener_por_ciudad_pais.side_effect = RuntimeError("BD caída")
+
+        resultado = self._orquestador().buscar(self.espec)
+
+        self.assertEqual(len(resultado.candidatos), 2)
+        self.assertTrue(
+            all(c.hospedaje.distancia_km is None for c in resultado.candidatos)
+        )
 
 

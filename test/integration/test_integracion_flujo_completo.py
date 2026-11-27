@@ -18,10 +18,16 @@ class TestIntegracionFlujoCompleto(BaseDBTestCase):
 
     def setUp(self):
         super().setUp()
-        self.destino_id = self.crear_destino(ciudad=f"Medellin_{uuid.uuid4().hex}")
+        self.ciudad = f"Medellin_{uuid.uuid4().hex}"
+        self.destino_id = self.crear_destino(
+            ciudad=self.ciudad,
+            pais="Colombia",
+            latitud=6.2442,
+            longitud=-75.5812,
+        )
         self.tokens = [f"ChIJ-{uuid.uuid4().hex}-A", f"ChIJ-{uuid.uuid4().hex}-B"]
         self.espec = EspecificacionBusqueda(
-            ciudad="Medellin",
+            ciudad=self.ciudad,
             pais="Colombia",
             presupuesto_max_noche=100,
             preferencias="cerca del metro",
@@ -38,6 +44,8 @@ class TestIntegracionFlujoCompleto(BaseDBTestCase):
                 url_reserva="https://hotel.example",
                 destino_id=self.destino_id,
                 google_place_id=token,
+                latitud=6.2442 + indice * 0.001,
+                longitud=-75.5812,
             )
             for indice, token in enumerate(self.tokens, start=1)
         ]
@@ -100,6 +108,20 @@ class TestIntegracionFlujoCompleto(BaseDBTestCase):
             resultado.candidatos[0].analisis.resumen_ejecutivo,
             f"Análisis de {resultado.candidatos[0].hospedaje.nombre}",
         )
+        self.assertTrue(
+            all(
+                candidato.hospedaje.distancia_km is not None
+                for candidato in resultado.candidatos
+            )
+        )
+
+    def test_filtro_de_distancia_usa_las_coordenadas_del_destino(self):
+        espec = self.espec.model_copy(update={"max_distancia_km": 0.15})
+
+        resultado = self._orquestador(self._evaluador()).buscar(espec)
+
+        self.assertEqual(len(resultado.candidatos), 1)
+        self.assertLessEqual(resultado.candidatos[0].hospedaje.distancia_km, 0.15)
 
     def test_repetir_la_busqueda_no_duplica_hospedajes_ni_vuelve_a_analizar(self):
         evaluador = self._evaluador()

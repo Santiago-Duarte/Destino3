@@ -48,6 +48,7 @@ def respuesta_mock():
                 "overall_rating": 4.5,
                 "description": "Centro",
                 "link": "https://hotela.com",
+                "gps_coordinates": {"latitude": 6.2442, "longitude": -75.5812},
             },
             {
                 "name": "Hotel B",
@@ -55,6 +56,7 @@ def respuesta_mock():
                 "overall_rating": 4.0,
                 "description": "Bocagrande",
                 "link": "https://hotelb.com",
+                "gps_coordinates": {"latitude": 6.2088, "longitude": -75.5671},
             },
         ],
     }
@@ -233,6 +235,38 @@ class TestBuscarHospedajes(unittest.TestCase):
 
         self.assertEqual(hospedajes[0].descripcion, "Hotel con piscina")
         self.assertEqual(hospedajes[0].direccion, "Calle 10 #20-30")
+
+    @patch("src.services.buscador_serpapi.consultar_serpapi")
+    def test_extrae_coordenadas_gps_de_cada_propiedad(self, raw_mock):
+        raw_mock.return_value = respuesta_mock()
+
+        hospedajes = buscar_hospedajes(ESPEC)
+
+        self.assertEqual(hospedajes[0].coordenadas(), (6.2442, -75.5812))
+        self.assertEqual(hospedajes[1].coordenadas(), (6.2088, -75.5671))
+
+    @patch("src.services.buscador_serpapi.consultar_serpapi")
+    def test_sin_gps_las_coordenadas_quedan_en_none(self, raw_mock):
+        respuesta = respuesta_mock()
+        respuesta["properties"][0].pop("gps_coordinates")
+        raw_mock.return_value = respuesta
+
+        hospedajes = buscar_hospedajes(ESPEC)
+
+        self.assertIsNone(hospedajes[0].coordenadas())
+
+    @patch("src.services.buscador_serpapi.consultar_serpapi")
+    def test_gps_invalido_queda_en_none(self, raw_mock):
+        respuesta = respuesta_mock()
+        respuesta["properties"][0]["gps_coordinates"] = {
+            "latitude": "N/A",
+            "longitude": None,
+        }
+        raw_mock.return_value = respuesta
+
+        hospedajes = buscar_hospedajes(ESPEC)
+
+        self.assertIsNone(hospedajes[0].coordenadas())
 
     @patch("src.services.buscador_serpapi.consultar_serpapi")
     def test_sin_presupuesto_conserva_hotel_sin_tarifa(self, raw_mock):

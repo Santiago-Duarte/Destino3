@@ -6,11 +6,15 @@ from src.config import settings
 from src.exceptions.LoteIAError import LoteIAError
 from src.models.analisis import Analisis
 from src.models.busqueda import EspecificacionBusqueda
+from src.models.destino import Destino
 from src.models.hospedaje import Hospedaje
 from src.repositories.analisis_ia_repository import AnalisisIARepository
+from src.repositories.destino_repository import DestinoRepository
 from src.repositories.hospedaje_repository import HospedajeRepository
 from src.services.buscador_serpapi import buscar_hospedajes
+from src.services.distancias import aplicar_distancias
 from src.services.evaluador_ia import EvaluadorIA, preseleccionar_candidatos
+from src.services.geocodificador import geocodificar, geocodificar_punto
 
 logger = logging.getLogger(__name__)
 
@@ -85,11 +89,21 @@ class OrquestadorIntegracion:
             hospedajes_repo: HospedajeRepository | None = None,
             analisis_repo: AnalisisIARepository | None = None,
             evaluador: EvaluadorIA | None = None,
+            destino_repo: DestinoRepository | None = None,
+            geocodificar: Callable[
+                [str, str], tuple[float, float] | None
+            ] = geocodificar,
+            geocodificar_punto: Callable[
+                [str, str, str], tuple[float, float] | None
+            ] = geocodificar_punto,
     ) -> None:
         self._buscar_hospedajes = buscar_hospedajes
         self._hospedajes_repo = hospedajes_repo
         self._analisis_repo = analisis_repo
         self._evaluador = evaluador
+        self._destino_repo = destino_repo
+        self._geocodificar = geocodificar
+        self._geocodificar_punto = geocodificar_punto
 
     def buscar(self, espec: EspecificacionBusqueda) -> ResultadoBusqueda:
         hospedajes = self._buscar_hospedajes(espec)
@@ -104,6 +118,20 @@ class OrquestadorIntegracion:
         ):
             hospedaje.id = id_generado
 
+        self._calcular_distancias(hospedajes, espec)
+        if espec.max_distancia_km is not None:
+            hospedajes = [
+                hospedaje for hospedaje in hospedajes
+                if hospedaje.distancia_km is not None
+                and hospedaje.distancia_km <= espec.max_distancia_km
+            ]
+            if not hospedajes:
+                logger.warning(
+                    "Ningún hotel quedó dentro de %s km del centro",
+                    espec.max_distancia_km,
+                )
+                return ResultadoBusqueda(espec, [])
+
         candidatos = [
             Candidato(hospedaje=hospedaje)
             for hospedaje in preseleccionar_candidatos(
@@ -116,6 +144,89 @@ class OrquestadorIntegracion:
         self._completar_analisis(candidatos)
         self._puntuar(candidatos, espec)
         return ResultadoBusqueda(espec, rankear_candidatos(candidatos))
+
+    def _calcular_distancias(
+            self,
+            hospedajes: list[Hospedaje],
+            espec: EspecificacionBusqueda,
+    ) -> None:
+        """Completa distancia y tiempos desde el punto de referencia (o centro si no hay).
+
+        Si la especificación tiene `punto_referencia`, se intenta geocodificar ese
+        punto específico. Si falla o no se especifica, se usa el centro de la ciudad.
+        La falta de coordenadas no rompe el flujo principal.
+        """
+        try:
+            coordenadas_origen, punto_usado = self._coordenadas_origen(espec)
+        except Exception as error:
+            logger.warning(
+                "No se pudieron resolver las coordenadas de origen: %s",
+                type(error).__name__,
+            )
+            return
+
+        if coordenadas_origen is None:
+            return
+        aplicar_distancias(hospedajes, coordenadas_origen)
+
+        # Guardar en la especificación qué punto se usó para que el evaluador y CLI lo sepan
+        espec.punto_referencia_usado = punto_usado
+
+    def _coordenadas_origen(
+            self,
+            espec: EspecificacionBusqueda,
+    ) -> tuple[tuple[float, float] | None, str | None]:
+        """Devuelve ``(coordenadas, descripcion_punto_usado)``.
+
+        Prioridad:
+        1. Si espec.punto_referencia existe → geocodifica ese punto; guarda en BD.
+        2. Si destino ya tiene referencia guardada y coincide → úsala.
+        3. Si destino tiene centro guardado → úsalo.
+        4. Geocodifica centro de la ciudad; guarda en BD.
+        """
+        repositorio = self._destino_repo or DestinoRepository()
+        destino: Destino | None = repositorio.obtener_por_ciudad_pais(
+            espec.ciudad, espec.pais
+        )
+        if destino is None:
+            return (None, None)
+
+        # 1. Usuario pidió un punto específico en esta búsqueda
+        if espec.punto_referencia:
+            # Si ya tenemos este punto guardado y coincide, úsalo
+            if (destino.tiene_referencia()
+                    and destino.punto_referencia_usado
+                    and destino.punto_referencia_usado.lower() == espec.punto_referencia.lower()):
+                ref = destino.coordenadas_referencia()
+                if ref is not None:
+                    return (ref, f"{espec.punto_referencia} (guardado)")
+
+            # Geocodificar el punto específico
+            coordenadas = self._geocodificar_punto(
+                espec.punto_referencia, espec.ciudad, espec.pais
+            )
+            if coordenadas is not None and destino.id is not None:
+                repositorio.actualizar_coordenadas_referencia(
+                    destino.id, coordenadas[0], coordenadas[1], espec.punto_referencia
+                )
+            return (coordenadas, espec.punto_referencia)
+
+        # 2. No hay punto específico: si ya hay referencia guardada de búsquedas previas, NO la usamos
+        #    (el usuario no la pidió ahora). Usamos el centro.
+        #    Esto evita mezclar distancias de "cerca del metro" con búsquedas genéricas.
+
+        # 3. Centro de la ciudad ya guardado
+        centro = destino.coordenadas()
+        if centro is not None:
+            return (centro, "centro de la ciudad")
+
+        # 4. Geocodificar centro
+        centro = self._geocodificar(espec.ciudad, espec.pais)
+        if centro is not None and destino.id is not None:
+            repositorio.actualizar_coordenadas(
+                destino.id, centro[0], centro[1]
+            )
+        return (centro, "centro de la ciudad")
 
     def _completar_analisis(self, candidatos: list[Candidato]) -> None:
         repositorio = self._analisis_repo or AnalisisIARepository()

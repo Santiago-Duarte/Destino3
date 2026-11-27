@@ -19,6 +19,11 @@ class TestTieneRequisitos(unittest.TestCase):
             EspecificacionBusqueda(preferencias="cerca del metro").tiene_requisitos()
         )
 
+    def test_con_distancia_maxima_tiene_requisitos(self):
+        self.assertTrue(
+            EspecificacionBusqueda(max_distancia_km=1.5).tiene_requisitos()
+        )
+
     def test_preferencias_en_blanco_no_cuenta_como_requisito(self):
         self.assertFalse(
             EspecificacionBusqueda(preferencias="   ").tiene_requisitos()

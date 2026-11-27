@@ -336,6 +336,9 @@ def mapear_hospedajes(
             propiedad.get("description") or "Sin descripción disponible"
         )[:4000]
         direccion = str(propiedad.get("address") or "").strip() or None
+        gps = propiedad.get("gps_coordinates") or {}
+        latitud = _numero(gps.get("latitude"))
+        longitud = _numero(gps.get("longitude"))
 
         hospedajes.append(Hospedaje(
             destino_id=id_destino,
@@ -347,6 +350,8 @@ def mapear_hospedajes(
             direccion=direccion,
             url_reserva=url_reserva,
             google_place_id=token_propiedad or None,
+            latitud=latitud,
+            longitud=longitud,
         ))
 
     return hospedajes
